@@ -1,0 +1,101 @@
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { getSessionProfile } from "@/lib/auth";
+import { getSignedUrl } from "@/lib/storage";
+import { humanFileSize } from "@/lib/format";
+import { Card } from "@/components/ui/Card";
+import { AssignmentSubmitForm } from "./AssignmentSubmitForm";
+
+export default async function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
+  const { lessonId } = await params;
+  const session = await getSessionProfile();
+  const supabase = await createClient();
+
+  const [{ data: lesson }, { data: materials }, { data: assignment }] = await Promise.all([
+    supabase.from("lessons").select("*, subjects(name)").eq("id", lessonId).single(),
+    supabase.from("lesson_materials").select("*").eq("lesson_id", lessonId),
+    supabase.from("assignments").select("*").eq("lesson_id", lessonId).maybeSingle(),
+  ]);
+
+  if (!lesson) notFound();
+
+  let submission = null;
+  if (assignment) {
+    const { data } = await supabase
+      .from("assignment_submissions")
+      .select("*")
+      .eq("assignment_id", assignment.id)
+      .eq("student_id", session!.user.id)
+      .maybeSingle();
+    submission = data;
+  }
+
+  const materialLinks = await Promise.all(
+    (materials ?? []).map(async (m) => ({
+      ...m,
+      url: await getSignedUrl("lesson-materials", m.storage_path),
+    })),
+  );
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+          {(lesson as unknown as { subjects: { name: string } | null }).subjects?.name}
+        </p>
+        <h1 className="font-head text-xl font-extrabold">{lesson.title}</h1>
+        {lesson.description && <p className="mt-1 text-sm text-ink-soft">{lesson.description}</p>}
+      </div>
+
+      {lesson.video_url && (
+        <div className="overflow-hidden rounded-[var(--radius-brand)] border border-line bg-black">
+          <video src={lesson.video_url} controls className="aspect-video w-full" />
+        </div>
+      )}
+
+      {materialLinks.length > 0 && (
+        <div>
+          <h2 className="mb-2 font-head text-sm font-bold uppercase tracking-wide text-ink-faint">
+            Materials
+          </h2>
+          <div className="flex flex-col gap-2">
+            {materialLinks.map((m) => (
+              <Card key={m.id} className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">{m.file_name}</p>
+                  <p className="text-xs text-ink-faint">{humanFileSize(m.file_size)}</p>
+                </div>
+                {m.url ? (
+                  <a href={m.url} download className="text-sm font-semibold text-brand-cyan-deep">
+                    Download
+                  </a>
+                ) : (
+                  <span className="text-xs text-ink-faint">Unavailable</span>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {assignment && (
+        <div>
+          <h2 className="mb-2 font-head text-sm font-bold uppercase tracking-wide text-ink-faint">
+            Assignment: {assignment.title}
+          </h2>
+          {assignment.instructions && (
+            <p className="mb-2 text-sm text-ink-soft">{assignment.instructions}</p>
+          )}
+          <AssignmentSubmitForm
+            assignmentId={assignment.id}
+            lessonId={lesson.id}
+            studentId={session!.user.id}
+            existingFileName={submission?.file_name ?? null}
+            grade={submission?.grade ?? null}
+            feedback={submission?.feedback ?? null}
+          />
+        </div>
+      )}
+    </div>
+  );
+}

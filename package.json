@@ -2,16 +2,32 @@
   "name": "modern-talent-hub",
   "version": "1.0.0",
   "private": true,
-  "description": "Modern Talent Hub (MTH) — mobile-first Kenyan e-learning and talent marketplace clickable prototype (Student / Teacher / Admin).",
-  "author": "Modern Talent Hub",
-  "license": "UNLICENSED",
+  "description": "Modern Talent Hub (MTH) — production Kenyan CBC e-learning and talent marketplace app.",
   "scripts": {
-    "dev": "serve . -l 3000",
-    "start": "serve . -l 3000",
-    "build": "echo \"Static site — no build step required\"",
-    "vercel-build": "echo \"Static site — no build step required\""
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
+    "next": "16.3.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
-    "serve": "^14.2.1"
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }

@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+/* Modern Talent Hub brand tokens — carried over from the original prototype
+   (legacy-prototype/index.html) so the visual identity is unchanged. */
+:root {
+  --ink: #0f1a24;
+  --ink-soft: #4a5a68;
+  --ink-faint: #7a8996;
+  --paper: #ebf1f6;
+  --surface: #ffffff;
+  --surface-2: #f4f8fb;
+  --line: #dce6ee;
+
+  --cyan: #00a8f0;
+  --cyan-deep: #0089c7;
+  --orange: #f5901a;
+  --orange-deep: #c96f0a;
+  --red: #ed1c24;
+  --red-deep: #c81e27;
+  --blue: #0b7fb8;
+  --blue-deep: #06618c;
+
+  --success: #1e9e6b;
+  --success-tint: #e3f6ee;
+  --success-text: #0f6b48;
+  --warning: #b8720a;
+  --warning-tint: #fceeda;
+  --warning-text: #8a5608;
+  --danger-tint: #fbe6e7;
+  --danger-text: #9e1a20;
+  --info-tint: #e3f1fa;
+  --info-text: #075a82;
+
+  --shadow: 0 10px 28px rgba(15, 26, 36, 0.14);
+  --shadow-sm: 0 2px 8px rgba(15, 26, 36, 0.08);
+  --radius: 18px;
+  --radius-sm: 12px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #eaf2f7;
+    --ink-soft: #afc0cd;
+    --ink-faint: #7e8f9c;
+    --paper: #0a141c;
+    --surface: #131f29;
+    --surface-2: #0f1922;
+    --line: #233240;
+    --success-tint: #123226;
+    --success-text: #5fcfa0;
+    --warning-tint: #3a2a10;
+    --warning-text: #f0b25b;
+    --danger-tint: #3a1417;
+    --danger-text: #f0888d;
+    --info-tint: #0f2836;
+    --info-text: #7fccf0;
+    --shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-brand-cyan: var(--cyan);
+  --color-brand-cyan-deep: var(--cyan-deep);
+  --color-brand-orange: var(--orange);
+  --color-brand-orange-deep: var(--orange-deep);
+  --color-brand-red: var(--red);
+  --color-brand-red-deep: var(--red-deep);
+  --color-brand-blue: var(--blue);
+  --color-brand-blue-deep: var(--blue-deep);
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
+  --font-head: var(--font-archivo);
+  --font-body: var(--font-dm-sans);
+  --font-mono-brand: var(--font-dm-mono);
+  --radius-brand: var(--radius);
+  --radius-brand-sm: var(--radius-sm);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), sans-serif;
+}
+
+h1,
+h2,
+h3,
+.font-head {
+  font-family: var(--font-head), sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 8px;
+}
