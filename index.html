@@ -75,39 +75,16 @@ a{color:inherit;}
 .btn-chip{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:13px;font-weight:600;}
 .btn-chip:hover{border-color:var(--cyan-deep);}
 
-.workshop-body{display:grid;grid-template-columns:270px 1fr;gap:20px;align-items:start;}
-@media (max-width:860px){.workshop-body{grid-template-columns:1fr;} .jumprail{position:static;max-height:none;order:2;} .stage-col{order:1;}}
-
-/* jump rail */
-.jumprail{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;position:sticky;top:20px;max-height:calc(100vh - 40px);overflow-y:auto;box-shadow:var(--shadow-sm);}
-.jumprail h2{font-family:var(--font-head);font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:14px 4px 6px;}
-.jumprail h2:first-child{margin-top:2px;}
-.rail-group{display:flex;flex-direction:column;gap:3px;}
-.rail-btn{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:none;background:transparent;border-radius:10px;padding:8px 9px;min-height:40px;font-size:13.3px;color:var(--ink);font-weight:500;}
-.rail-btn:hover{background:var(--surface-2);}
-.rail-btn.active{background:var(--ink);color:#fff;font-weight:700;}
-.rail-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--dotc,var(--ink-faint));}
-.rail-num{font-family:var(--font-mono);font-size:11px;color:var(--ink-faint);width:16px;flex:none;}
-.rail-btn.active .rail-num{color:#cfe8f7;}
-
 /* stage */
-.stage-col{display:flex;flex-direction:column;gap:14px;align-items:center;}
-.stage-toolbar{width:100%;max-width:400px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.stage-col{display:flex;flex-direction:column;gap:14px;flex:1;min-height:calc(100vh - 100px);}
+.stage-toolbar{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .stage-toolbar .who{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);}
 .role-pill{font-family:var(--font-mono);font-size:11px;padding:3px 9px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);}
 .stage-toolbar .tools{display:flex;gap:6px;}
 .icon-btn{min-width:36px;min-height:36px;border-radius:10px;border:1px solid var(--line);background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:15px;}
 .icon-btn:hover{border-color:var(--cyan-deep);}
 
-.phone{width:375px;max-width:100%;height:812px;max-height:78vh;background:var(--ink);border-radius:46px;padding:12px;box-shadow:var(--shadow);position:relative;flex:none;}
-.phone-inner{background:var(--paper);width:100%;height:100%;border-radius:34px;overflow:hidden;position:relative;display:flex;flex-direction:column;}
-.notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:26px;background:var(--ink);border-radius:0 0 16px 16px;z-index:5;}
-.statusbar{height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-family:var(--font-mono);font-size:12px;color:var(--ink);background:transparent;}
-.statusbar .icons{display:flex;gap:5px;align-items:center;}
-.screen{flex:1;overflow-y:auto;background:var(--paper);-webkit-overflow-scrolling:touch;}
-.home-indicator{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);width:120px;height:5px;border-radius:3px;background:rgba(255,255,255,.35);}
-
-.stage-caption{font-size:12px;color:var(--ink-faint);text-align:center;max-width:375px;font-family:var(--font-mono);}
+.screen{flex:1;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);-webkit-overflow-scrolling:touch;}
 
 /* notes drawer */
 .drawer-overlay{position:fixed;inset:0;background:rgba(10,16,22,.5);z-index:40;display:none;}
@@ -234,30 +211,16 @@ table.data td{padding:8px 8px;border-bottom:1px solid var(--line);vertical-align
       <button class="btn-chip" onclick="toggleNotes()">&#128220; Design notes</button>
     </div>
   </div>
-  <div class="workshop-body">
-    <nav class="jumprail" id="jumprail" aria-label="All screens"></nav>
-    <div class="stage-col">
-      <div class="stage-toolbar">
-        <div class="who"><span id="whoLabel">Not signed in</span></div>
-        <div class="tools">
-          <button class="icon-btn" onclick="back()" title="Back" aria-label="Back">&#8592;</button>
-          <button class="icon-btn" onclick="nav(homeForRole())" title="Role home" aria-label="Role home">&#8962;</button>
-        </div>
+  <div class="stage-col">
+    <div class="stage-toolbar">
+      <div class="who"><span id="whoLabel">Not signed in</span></div>
+      <div class="tools">
+        <button class="icon-btn" onclick="back()" title="Back" aria-label="Back">&#8592;</button>
+        <button class="icon-btn" onclick="nav(homeForRole())" title="Role home" aria-label="Role home">&#8962;</button>
       </div>
-      <div class="phone">
-        <div class="phone-inner">
-          <div class="notch"></div>
-          <div class="statusbar">
-            <span>9:41</span>
-            <span class="icons">&#128246; &#128225; &#128267;</span>
-          </div>
-          <div class="screen" id="phoneScreen"></div>
-          <div id="phoneTabs"></div>
-          <div class="home-indicator"></div>
-        </div>
-      </div>
-      <div class="stage-caption" id="screenCaption">Splash</div>
     </div>
+    <div class="screen" id="phoneScreen"></div>
+    <div id="phoneTabs"></div>
   </div>
 </div>
 
@@ -265,9 +228,9 @@ table.data td{padding:8px 8px;border-bottom:1px solid var(--line);vertical-align
 <div class="drawer" id="drawer" role="dialog" aria-label="Design notes">
   <button class="icon-btn drawer-close" onclick="toggleNotes()" aria-label="Close">&times;</button>
   <h3>Responsive &amp; layout notes</h3>
-  <p><strong>Phone (this view), &le;600px:</strong> single column, bottom tab bar for Student/Teacher primary nav, full-width cards, sticky CTA buttons at screen bottom for payment / submit actions.</p>
+  <p><strong>Phone, &le;600px:</strong> single column, bottom tab bar for Student/Teacher primary nav, full-width cards, sticky CTA buttons at screen bottom for payment / submit actions.</p>
   <p><strong>Tablet, 600&ndash;1024px:</strong> bottom tabs become a persistent left icon-rail (72px). Two-column content where natural &mdash; e.g. Marketplace shows a master list (activities) with a detail pane beside it instead of full navigation; Content Builder shows the module tree on the left and the selected lesson's editor on the right.</p>
-  <p><strong>Desktop, &gt;1024px:</strong> left rail expands to a labelled sidebar (like this jump rail). Dashboards move to a 12-column grid: KPI tiles in a row, then a two-thirds/one-third split for primary list + side summary (e.g. Admin Overview: approval queue + platform wallet). Forms such as Create Course use a two-column layout with a sticky live-preview summary card on the right instead of stacking.</p>
+  <p><strong>Desktop, &gt;1024px:</strong> Dashboards move to a 12-column grid: KPI tiles in a row, then a two-thirds/one-third split for primary list + side summary (e.g. Admin Overview: approval queue + platform wallet). Forms such as Create Course use a two-column layout with a sticky live-preview summary card on the right instead of stacking.</p>
   <h3>Accessibility</h3>
   <ul>
     <li>All buttons, tabs, chips and list rows keep a minimum 44&times;44px hit target (36px "mini" icon controls are paired with generous spacing and are never the only way to complete a required action).</li>
@@ -582,10 +545,8 @@ function bottomTabs(active){
 const STUDENT_TAB_SCREENS = ['studentHome','subjectGrid','marketHome','progress'];
 
 function render(){
-  renderJumpRail();
   const meta = findMeta(STATE.current);
-  const capEl = document.getElementById('screenCaption');
-  if(capEl) capEl.textContent = meta ? meta.label : STATE.current;
+  document.title = meta ? 'Modern Talent Hub · ' + meta.label : 'Modern Talent Hub';
   const whoEl = document.getElementById('whoLabel');
   if(whoEl){
     whoEl.innerHTML = STATE.role
@@ -598,17 +559,6 @@ function render(){
   screenEl.scrollTop = 0;
   const tabsEl = document.getElementById('phoneTabs');
   tabsEl.innerHTML = STUDENT_TAB_SCREENS.includes(STATE.current) ? bottomTabs(STATE.current) : '';
-}
-function renderJumpRail(){
-  const el = document.getElementById('jumprail');
-  if(!el) return;
-  el.innerHTML = SCREEN_META.map(g=>
-    '<h2>'+esc(g.group)+'</h2><div class="rail-group">' +
-    g.items.map((it,i)=>
-      '<button class="rail-btn '+(STATE.current===it[0]?'active':'')+'" style="--dotc:'+g.dot+'" onclick="nav(\''+it[0]+'\')">'+
-      '<span class="rail-dot"></span><span class="rail-num">'+(i+1)+'</span><span>'+esc(it[1])+'</span></button>'
-    ).join('') + '</div>'
-  ).join('');
 }
 function toggleNotes(){
   document.getElementById('drawer').classList.toggle('open');
