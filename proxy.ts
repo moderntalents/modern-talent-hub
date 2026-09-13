@@ -6,9 +6,27 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // This runs on every request, including the homepage — if it throws, the
+  // whole site goes down with a raw "Internal Server Error" instead of any
+  // Next.js page ever getting a chance to render. Missing Supabase env vars
+  // (not yet set in Vercel, or a fresh `vercel dev`/`next dev` with no
+  // .env.local) is the most common reason to land here, so fail soft: skip
+  // auth-gating rather than crash. Pages that actually need Supabase will
+  // still surface their own clear error when they try to use it.
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error(
+      "[proxy] NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY are not set — " +
+        "skipping auth checks. Set them in your environment (see .env.example) to enable sign-in.",
+    );
+    return response;
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
