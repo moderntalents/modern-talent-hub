@@ -49,7 +49,7 @@ export default function SignupPage() {
     setError(null);
     const supabase = createClient();
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -65,23 +65,32 @@ export default function SignupPage() {
       },
     });
 
-    setLoading(false);
-
     if (signUpError) {
+      setLoading(false);
       setError(signUpError.message);
       return;
     }
 
-    setSubmitted(true);
-    setTimeout(() => router.push(`/${role}`), 1200);
+    // signUp() only returns a session when email confirmation is off. If it's
+    // required, there's no session yet and nothing to redirect into — show
+    // the "check your email" state instead of racing the dashboard's auth
+    // check (which would just bounce back to /login).
+    if (!data.session) {
+      setLoading(false);
+      setSubmitted(true);
+      return;
+    }
+
+    router.push(`/${role}`);
+    router.refresh();
   }
 
   if (submitted) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
-        <p className="font-head text-lg font-bold">Account created</p>
+        <p className="font-head text-lg font-bold">Check your email</p>
         <p className="text-sm text-ink-soft">
-          Check your email to confirm your address if required, then taking you to your dashboard…
+          We&apos;ve sent a confirmation link to {email}. Confirm your address to finish creating your account, then log in.
         </p>
       </main>
     );

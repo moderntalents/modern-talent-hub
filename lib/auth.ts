@@ -1,9 +1,17 @@
 import "server-only";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/lib/supabase/types";
 
-export async function getSessionProfile() {
+// Every dashboard route calls this from both its layout (via requireRole) and
+// its page, which each need the signed-in user's profile. Without caching,
+// that's two round trips per request to Supabase Auth (auth.getUser() calls
+// the Auth server to verify the JWT) plus two profile queries. React's
+// request-scoped cache() collapses those into one for the lifetime of a
+// single render pass, which is where the registration -> dashboard load time
+// was actually going.
+export const getSessionProfile = cache(async () => {
   try {
     const supabase = await createClient();
     const {
@@ -27,7 +35,7 @@ export async function getSessionProfile() {
     console.error("[getSessionProfile] Supabase unavailable:", err instanceof Error ? err.message : err);
     return null;
   }
-}
+});
 
 /** Redirects to /login if not signed in, or to their own dashboard if signed in with the wrong role. */
 export async function requireRole(role: UserRole) {
