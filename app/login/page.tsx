@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { Card, Field, Input } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
+import { GoogleButton } from "@/components/auth/GoogleButton";
 
 function LoginForm() {
   const router = useRouter();
@@ -25,24 +26,30 @@ function LoginForm() {
 
     setLoading(true);
     setError(null);
-    const supabase = createClient();
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
 
-    if (signInError) {
-      setError(signInError.message);
-      return;
+    try {
+      const supabase = createClient();
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (signInError) {
+        setError(signInError.message);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.user.id)
+        .single();
+
+      const next = params.get("next");
+      router.push(next || `/${profile?.role ?? "student"}`);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", data.user.id)
-      .single();
-
-    const next = params.get("next");
-    router.push(next || `/${profile?.role ?? "student"}`);
-    router.refresh();
   }
 
   return (
@@ -53,7 +60,16 @@ function LoginForm() {
       </div>
 
       <Card>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
+          <GoogleButton label="Continue with Google" onError={setError} disabled={loading} />
+          <div className="flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-ink-faint">
+            <span className="h-px flex-1 bg-line" />
+            or log in with email
+            <span className="h-px flex-1 bg-line" />
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
           <Field label="Email">
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoFocus />
           </Field>

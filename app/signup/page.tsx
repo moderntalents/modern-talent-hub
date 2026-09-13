@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { Card, Field, Input } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
+import { GoogleButton } from "@/components/auth/GoogleButton";
 
 type Role = "student" | "teacher";
 
@@ -47,42 +48,51 @@ export default function SignupPage() {
 
     setLoading(true);
     setError(null);
-    const supabase = createClient();
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          role,
-          full_name: fullName,
-          phone,
-          grade,
-          school_name: schoolName,
-          specialty,
-          bio,
+    // Everything below can throw — a misconfigured Supabase client, a
+    // network failure, whatever — and an uncaught throw here previously left
+    // the button spinning forever with no feedback (loading never reset,
+    // nothing to catch it). try/finally guarantees loading always clears.
+    try {
+      const supabase = createClient();
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            role,
+            full_name: fullName,
+            phone,
+            grade,
+            school_name: schoolName,
+            specialty,
+            bio,
+          },
         },
-      },
-    });
+      });
 
-    if (signUpError) {
+      if (signUpError) {
+        setError(signUpError.message);
+        return;
+      }
+
+      // signUp() only returns a session when email confirmation is off. If
+      // it's required, there's no session yet and nothing to redirect into —
+      // show the "check your email" state instead of racing the dashboard's
+      // auth check (which would just bounce back to /login).
+      if (!data.session) {
+        setSubmitted(true);
+        return;
+      }
+
+      router.push(`/${role}`);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
       setLoading(false);
-      setError(signUpError.message);
-      return;
     }
-
-    // signUp() only returns a session when email confirmation is off. If it's
-    // required, there's no session yet and nothing to redirect into — show
-    // the "check your email" state instead of racing the dashboard's auth
-    // check (which would just bounce back to /login).
-    if (!data.session) {
-      setLoading(false);
-      setSubmitted(true);
-      return;
-    }
-
-    router.push(`/${role}`);
-    router.refresh();
   }
 
   if (submitted) {
@@ -104,7 +114,23 @@ export default function SignupPage() {
       </div>
 
       <Card>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
+          <GoogleButton
+            label="Continue with Google"
+            onError={setError}
+            disabled={loading}
+          />
+          <p className="-mt-2 text-center text-xs text-ink-faint">
+            Creates a student account. Teachers should sign up with email below.
+          </p>
+          <div className="flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-ink-faint">
+            <span className="h-px flex-1 bg-line" />
+            or sign up with email
+            <span className="h-px flex-1 bg-line" />
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-2">
             {(["student", "teacher"] as Role[]).map((r) => (
               <button

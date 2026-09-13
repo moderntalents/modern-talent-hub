@@ -15,7 +15,7 @@ longer the live app.
 |---|---|
 | Framework | Next.js 16 (App Router, Server Components + Server Actions), TypeScript |
 | Styling | Tailwind CSS v4, brand tokens ported 1:1 from the original prototype |
-| Auth | Supabase Auth (email + password), role stored on `profiles.role` |
+| Auth | Supabase Auth (email + password, Google OAuth), role stored on `profiles.role` |
 | Database | Supabase Postgres, full schema + Row Level Security in `supabase/migrations/0001_init.sql` |
 | File storage | Supabase Storage (private buckets, signed URLs) |
 | Payments | Safaricom Daraja API (M-Pesa STK Push), real HTTP calls — no simulated success |
@@ -40,7 +40,8 @@ app/                      Next.js routes (App Router)
   api/mpesa/                STK push + payment callback webhook
   api/withdrawals/          withdrawal request + admin processing endpoints
   login/, signup/           auth pages
-components/                shared UI (brand-styled) + nav shell + file upload
+  auth/callback/            Google OAuth redirect handler (exchanges code for a session)
+components/                shared UI (brand-styled) + nav shell + file upload + Google button
 lib/
   supabase/                 browser / server / admin (service-role) Supabase clients
   auth.ts                   session + role-guard helpers
@@ -105,7 +106,21 @@ environment (account creation and third-party credentials require you):
    Copy the Project URL, `anon` key and `service_role` key into your environment
    (see `.env.example`) as `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
    `SUPABASE_SERVICE_ROLE_KEY`.
-2. **A Safaricom Daraja app** (M-Pesa). Register at
+2. **Google OAuth, for the "Continue with Google" button on `/login` and `/signup`**
+   (`app/auth/callback/route.ts` handles the redirect back). Two things to configure,
+   both outside this codebase:
+   - In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an
+     OAuth 2.0 Client ID (Web application). Add
+     `https://<your-project-ref>.supabase.co/auth/v1/callback` as an Authorized redirect URI
+     (find the exact URL in Supabase: **Authentication → Providers → Google**).
+   - In the Supabase dashboard, **Authentication → Providers → Google**: enable it and paste
+     the Client ID/Secret from the step above. Then under **Authentication → URL
+     Configuration**, add your app's origin(s) (`http://localhost:3000` for local dev, your
+     Vercel URL for production) to **Redirect URLs** so `/auth/callback` is allowed.
+   Until this is done, clicking the Google button fails with a clear
+   "provider is not enabled" error rather than hanging — email/password sign-up and login work
+   independently of this.
+3. **A Safaricom Daraja app** (M-Pesa). Register at
    [developer.safaricom.co.ke](https://developer.safaricom.co.ke) for sandbox
    `MPESA_CONSUMER_KEY`/`MPESA_CONSUMER_SECRET` immediately; a **production** Paybill/Till
    requires Safaricom's business approval process. Set `MPESA_SHORTCODE`, `MPESA_PASSKEY`,
@@ -116,13 +131,13 @@ environment (account creation and third-party credentials require you):
    `checkoutRequestId` (which is legitimately shown to the paying student) could otherwise
    forge a fake "payment successful" callback — see
    `app/api/mpesa/callback/[secret]/route.ts`.
-3. **M-Pesa B2C payouts** (automatic teacher withdrawal disbursement) — intentionally **not
+4. **M-Pesa B2C payouts** (automatic teacher withdrawal disbursement) — intentionally **not
    implemented**. Safaricom's B2C API needs a separate, further business approval
    (initiator credentials + a security certificate) that a fresh developer account doesn't
    have. Until you complete that and wire it into `lib/mpesa.ts` (`initiateB2CPayout`),
    withdrawals are reviewed and paid out manually by an admin from `/admin/withdrawals`,
    who records the real M-Pesa/bank reference after sending the money themselves.
-4. A **custom domain / production URL** for `MPESA_CALLBACK_URL` and
+5. A **custom domain / production URL** for `MPESA_CALLBACK_URL` and
    `capacitor.config.ts`'s `server.url` — both need your actual Vercel deployment URL.
 
 ## 3. What to push to GitHub
