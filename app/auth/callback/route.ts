@@ -19,22 +19,32 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("Missing authorization code.")}`);
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
 
-  if (error) {
-    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message)}`);
+    if (error) {
+      console.error("[auth/callback] exchangeCodeForSession failed:", error.message);
+      return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message)}`);
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.redirect(`${origin}/login`);
+    }
+
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+
+    return NextResponse.redirect(`${origin}/${profile?.role ?? "student"}`);
+  } catch (err) {
+    // createClient() throws if Supabase env vars are missing on this
+    // deployment — surface that as a login-page error instead of a raw 500.
+    console.error("[auth/callback] unexpected error:", err instanceof Error ? err.message : err);
+    return NextResponse.redirect(
+      `${origin}/login?error=${encodeURIComponent("Something went wrong completing sign-in. Please try again.")}`,
+    );
   }
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(`${origin}/login`);
-  }
-
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-
-  return NextResponse.redirect(`${origin}/${profile?.role ?? "student"}`);
 }

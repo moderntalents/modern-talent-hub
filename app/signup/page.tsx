@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
@@ -10,12 +10,22 @@ import { ErrorBanner } from "@/components/ui/EmptyState";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 
 type Role = "student" | "teacher";
+type Stage = "form" | "verify";
 
-export default function SignupPage() {
+const RESEND_COOLDOWN_SECONDS = 30;
+
+function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Lets /login send someone back here to finish verifying a previous
+  // signup (?verify=1&email=...) instead of leaving them stuck with no way
+  // to re-enter a code once the in-memory form state from their original
+  // signup is gone (e.g. they closed the tab before verifying).
+  const resumeEmail = searchParams.get("verify") === "1" ? searchParams.get("email") : null;
+  const [stage, setStage] = useState<Stage>(resumeEmail ? "verify" : "form");
   const [role, setRole] = useState<Role>("student");
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(resumeEmail ?? "");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -23,9 +33,30 @@ export default function SignupPage() {
   const [schoolName, setSchoolName] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [bio, setBio] = useState("");
+  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [info, setInfo] = useState<string | null>(
+    resumeEmail ? `Enter the code we sent to ${resumeEmail}, or request a new one.` : null,
+  );
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => setResendCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
+  function friendlyAuthError(message: string): string {
+    if (/token.*(expired|invalid)|invalid.*(otp|token)/i.test(message)) {
+      return "That code is incorrect or has expired. Double-check it or request a new one.";
+    }
+    if (/already registered|already exists/i.test(message)) {
+      return "An account with this email already exists. Try logging in instead.";
+    }
+    return message;
+  }
 
   function validate(): string | null {
     if (!fullName.trim()) return "Enter your full name.";
@@ -48,6 +79,7 @@ export default function SignupPage() {
 
     setLoading(true);
     setError(null);
+    setInfo(null);
 
     // Everything below can throw — a misconfigured Supabase client, a
     // network failure, whatever — and an uncaught throw here previously left
@@ -73,16 +105,28 @@ export default function SignupPage() {
       });
 
       if (signUpError) {
-        setError(signUpError.message);
+        setError(friendlyAuthError(signUpError.message));
+        return;
+      }
+
+      // When email confirmation is required and the email is already
+      // registered & confirmed, Supabase deliberately doesn't return an
+      // error (to avoid leaking which emails exist) — instead it returns a
+      // user object with an empty identities array. This is the documented
+      // way to detect that case client-side.
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        setError("An account with this email already exists. Try logging in instead.");
         return;
       }
 
       // signUp() only returns a session when email confirmation is off. If
-      // it's required, there's no session yet and nothing to redirect into —
-      // show the "check your email" state instead of racing the dashboard's
-      // auth check (which would just bounce back to /login).
+      // it's required, there's no session yet — move to the "enter the code
+      // we emailed you" step instead of racing the dashboard's auth check
+      // (which would just bounce back to /login).
       if (!data.session) {
-        setSubmitted(true);
+        setStage("verify");
+        setInfo(`We've sent a 6-digit verification code to ${email}.`);
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
         return;
       }
 
@@ -95,13 +139,138 @@ export default function SignupPage() {
     }
   }
 
-  if (submitted) {
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault();
+    const code = otp.trim();
+    if (code.length < 6) {
+      setError("Enter the 6-digit code from your email.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setInfo(null);
+
+    try {
+      const supabase = createClient();
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+        email,
+        token: code,
+        type: "signup",
+      });
+
+      if (verifyError) {
+        setError(friendlyAuthError(verifyError.message));
+        return;
+      }
+
+      if (!data.session) {
+        setError("Verification succeeded but no session was returned — please try logging in.");
+        return;
+      }
+
+      // Verified and Supabase returned a live session — log straight in, no
+      // separate login step and no admin approval involved. Read the role
+      // back from the verified session's own metadata rather than the local
+      // `role` state: on the /login?verify=1 resume path, `role` is just the
+      // component's default ("student") since the user never filled out the
+      // form on this page load.
+      const verifiedRole = (data.session.user.user_metadata?.role as Role | undefined) ?? role;
+      router.push(`/${verifiedRole}`);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    if (resendCooldown > 0 || resending) return;
+
+    setResending(true);
+    setError(null);
+    setInfo(null);
+
+    try {
+      const supabase = createClient();
+      const { error: resendError } = await supabase.auth.resend({ type: "signup", email });
+
+      if (resendError) {
+        setError(friendlyAuthError(resendError.message));
+        return;
+      }
+
+      setInfo(`A new code has been sent to ${email}.`);
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resend the code. Please try again.");
+    } finally {
+      setResending(false);
+    }
+  }
+
+  if (stage === "verify") {
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
-        <p className="font-head text-lg font-bold">Check your email</p>
-        <p className="text-sm text-ink-soft">
-          We&apos;ve sent a confirmation link to {email}. Confirm your address to finish creating your account, then log in.
-        </p>
+      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-5 p-6">
+        <div className="text-center">
+          <h1 className="font-head text-2xl font-extrabold">Verify your email</h1>
+          <p className="mt-1 text-sm text-ink-soft">
+            Enter the 6-digit code we sent to <span className="font-semibold text-ink">{email}</span>.
+          </p>
+        </div>
+
+        <Card>
+          <form onSubmit={handleVerify} className="flex flex-col gap-4">
+            <Field label="Verification code">
+              <Input
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="123456"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                autoFocus
+                className="text-center text-lg tracking-[0.5em]"
+              />
+            </Field>
+
+            {info && (
+              <p className="rounded-xl bg-success-tint px-4 py-3 text-sm font-medium text-[var(--success-text)]">
+                {info}
+              </p>
+            )}
+            {error && <ErrorBanner message={error} />}
+
+            <Button type="submit" loading={loading} className="w-full">
+              Verify &amp; continue
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              loading={resending}
+              disabled={resendCooldown > 0}
+              onClick={handleResend}
+              className="w-full"
+            >
+              {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : "Resend code"}
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStage("form");
+                setOtp("");
+                setError(null);
+                setInfo(null);
+              }}
+              className="text-center text-sm font-semibold text-ink-soft hover:text-ink"
+            >
+              Use a different email
+            </button>
+          </form>
+        </Card>
       </main>
     );
   }
@@ -200,5 +369,13 @@ export default function SignupPage() {
         </Link>
       </p>
     </main>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   );
 }

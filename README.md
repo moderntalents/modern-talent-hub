@@ -15,7 +15,7 @@ longer the live app.
 |---|---|
 | Framework | Next.js 16 (App Router, Server Components + Server Actions), TypeScript |
 | Styling | Tailwind CSS v4, brand tokens ported 1:1 from the original prototype |
-| Auth | Supabase Auth (email + password, Google OAuth), role stored on `profiles.role` |
+| Auth | Supabase Auth — email + password with a 6-digit email OTP verification step (no admin approval needed for signup), Google OAuth. Role stored on `profiles.role` |
 | Database | Supabase Postgres, full schema + Row Level Security in `supabase/migrations/0001_init.sql` |
 | File storage | Supabase Storage (private buckets, signed URLs) |
 | Payments | Safaricom Daraja API (M-Pesa STK Push), real HTTP calls — no simulated success |
@@ -105,7 +105,11 @@ environment (account creation and third-party credentials require you):
    `supabase/migrations/0001_init.sql` then `supabase/seed.sql`.
    Copy the Project URL, `anon` key and `service_role` key into your environment
    (see `.env.example`) as `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-   `SUPABASE_SERVICE_ROLE_KEY`.
+   `SUPABASE_SERVICE_ROLE_KEY`. For the signup OTP flow (`app/signup/page.tsx`) to send a
+   6-digit code rather than only a magic link, confirm two things in **Authentication →
+   Providers → Email**: **Confirm email** is enabled (it is by default), and under
+   **Authentication → Email Templates → Confirm signup**, the template includes `{{ .Token }}`
+   (Supabase's default template already does — only relevant if you've customized it).
 2. **Google OAuth, for the "Continue with Google" button on `/login` and `/signup`**
    (`app/auth/callback/route.ts` handles the redirect back). Two things to configure,
    both outside this codebase:
@@ -113,13 +117,22 @@ environment (account creation and third-party credentials require you):
      OAuth 2.0 Client ID (Web application). Add
      `https://<your-project-ref>.supabase.co/auth/v1/callback` as an Authorized redirect URI
      (find the exact URL in Supabase: **Authentication → Providers → Google**).
-   - In the Supabase dashboard, **Authentication → Providers → Google**: enable it and paste
-     the Client ID/Secret from the step above. Then under **Authentication → URL
-     Configuration**, add your app's origin(s) (`http://localhost:3000` for local dev, your
-     Vercel URL for production) to **Redirect URLs** so `/auth/callback` is allowed.
-   Until this is done, clicking the Google button fails with a clear
-   "provider is not enabled" error rather than hanging — email/password sign-up and login work
-   independently of this.
+   - In the Supabase dashboard, **Authentication → Providers → Google**: toggle it **on** and
+     paste the Client ID/Secret from the step above.
+   - In **Authentication → URL Configuration → Redirect URLs**, add the exact callback path
+     (not just the bare origin) for every place you run this app —
+     `http://localhost:3000/auth/callback` for local dev, and
+     `https://<your-vercel-domain>/auth/callback` for each Vercel/custom domain you deploy to
+     (a trailing wildcard like `https://<your-vercel-domain>/**` also works and covers this
+     without needing exact-match entries). `app/auth/callback/route.ts` is the code side of
+     this — it already builds the redirect from `window.location.origin` at click time
+     (`components/auth/GoogleButton.tsx`), so it automatically adapts to whichever domain the
+     user is actually on; nothing is hard-coded there. This Redirect URLs list is what
+     Supabase checks that URL against, and it has to be configured here — no code change can
+     do it for you.
+   Until both are done, clicking the Google button fails with the clear
+   "Google sign-in is currently unavailable" message (see below) rather than hanging —
+   email/password sign-up and login work independently of this.
 3. **A Safaricom Daraja app** (M-Pesa). Register at
    [developer.safaricom.co.ke](https://developer.safaricom.co.ke) for sandbox
    `MPESA_CONSUMER_KEY`/`MPESA_CONSUMER_SECRET` immediately; a **production** Paybill/Till

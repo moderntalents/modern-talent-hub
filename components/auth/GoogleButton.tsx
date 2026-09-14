@@ -27,6 +27,18 @@ function GoogleIcon() {
   );
 }
 
+// Maps raw Supabase auth errors to copy a user can act on. The technical
+// message (e.g. "Unsupported provider: provider is not enabled") is still
+// logged to the console for debugging — it's just not shown to the user,
+// since "the Google provider isn't toggled on in the Supabase dashboard"
+// means nothing to someone trying to sign up.
+function friendlyOAuthError(message: string): string {
+  if (/provider is not enabled|unsupported provider/i.test(message)) {
+    return "Google sign-in is currently unavailable. Please try again later or use email verification instead.";
+  }
+  return message;
+}
+
 export function GoogleButton({
   label = "Continue with Google",
   className = "",
@@ -56,11 +68,14 @@ export function GoogleButton({
       // On success the browser is redirected to Google immediately, so this
       // component unmounts — loading only needs resetting on failure.
       if (error) {
-        onError?.(error.message);
+        console.error("[GoogleButton] signInWithOAuth failed:", error.message);
+        onError?.(friendlyOAuthError(error.message));
         setLoading(false);
       }
     } catch (err) {
-      onError?.(err instanceof Error ? err.message : "Could not start Google sign-in.");
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[GoogleButton] signInWithOAuth threw:", message);
+      onError?.(friendlyOAuthError(message) || "Could not start Google sign-in.");
       setLoading(false);
     }
   }

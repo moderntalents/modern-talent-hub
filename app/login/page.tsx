@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -9,6 +9,19 @@ import { Card, Field, Input } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 
+function friendlyAuthError(message: string): string {
+  if (/provider is not enabled|unsupported provider/i.test(message)) {
+    return "Google sign-in is currently unavailable. Please try again later or use email/password instead.";
+  }
+  if (/invalid login credentials/i.test(message)) {
+    return "Incorrect email or password.";
+  }
+  if (/email not confirmed/i.test(message)) {
+    return "Please verify your email before logging in — check your inbox for the verification code.";
+  }
+  return message;
+}
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -16,6 +29,14 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
+
+  // /auth/callback redirects OAuth failures here as ?error=... — surface it
+  // instead of silently landing on a blank login page.
+  useEffect(() => {
+    const oauthError = params.get("error");
+    if (oauthError) setError(friendlyAuthError(oauthError));
+  }, [params]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,13 +47,16 @@ function LoginForm() {
 
     setLoading(true);
     setError(null);
+    setNeedsVerification(false);
 
     try {
       const supabase = createClient();
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
       if (signInError) {
-        setError(signInError.message);
+        console.error("[login] signInWithPassword failed:", signInError.message);
+        setError(friendlyAuthError(signInError.message));
+        setNeedsVerification(/email not confirmed/i.test(signInError.message));
         return;
       }
 
@@ -78,6 +102,14 @@ function LoginForm() {
           </Field>
 
           {error && <ErrorBanner message={error} />}
+          {needsVerification && (
+            <Link
+              href={`/signup?verify=1&email=${encodeURIComponent(email)}`}
+              className="-mt-2 text-center text-sm font-semibold text-brand-cyan-deep"
+            >
+              Enter or resend your verification code
+            </Link>
+          )}
 
           <Button type="submit" loading={loading} className="w-full">
             Log in
