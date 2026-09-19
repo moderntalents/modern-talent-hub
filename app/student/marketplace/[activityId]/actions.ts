@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { arePaymentsEnabled } from "@/lib/settings";
 
 /**
  * Free activities skip payment entirely and are activated immediately.
@@ -24,10 +25,14 @@ export async function enrolFree(activityId: string) {
     .eq("id", activityId)
     .single();
   if (activityError || !activity) throw new Error("Activity not found.");
-  if (activity.price > 0) throw new Error("This activity requires payment.");
   if (activity.status !== "published") throw new Error("This activity is not available.");
 
   const admin = createAdminClient();
+  // A priced activity is only free to join while payments are switched off.
+  if (activity.price > 0 && (await arePaymentsEnabled(admin))) {
+    throw new Error("This activity requires payment.");
+  }
+
   const { error } = await admin.from("subscriptions").upsert(
     {
       student_id: user.id,

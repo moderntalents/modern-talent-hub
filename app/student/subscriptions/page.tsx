@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
 import { formatKes } from "@/lib/constants";
+import { arePaymentsEnabled } from "@/lib/settings";
 import { Card, Badge } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 
@@ -14,6 +15,8 @@ const STATUS_TONE = {
 export default async function SubscriptionsPage() {
   const session = await getSessionProfile();
   const supabase = await createClient();
+
+  const paymentsOn = await arePaymentsEnabled();
 
   const [{ data: subscriptions }, { data: transactions }] = await Promise.all([
     supabase
@@ -43,7 +46,9 @@ export default async function SubscriptionsPage() {
               <Card key={s.id} className="flex items-center justify-between">
                 <div>
                   <p className="font-semibold">{activity?.title ?? "Activity"}</p>
-                  <p className="text-xs text-ink-faint">{activity ? formatKes(activity.price) : ""}</p>
+                  <p className="text-xs text-ink-faint">
+                    {activity ? (paymentsOn && activity.price > 0 ? formatKes(activity.price) : "Free") : ""}
+                  </p>
                 </div>
                 <Badge tone={STATUS_TONE[s.status]}>{s.status.replace("_", " ")}</Badge>
               </Card>

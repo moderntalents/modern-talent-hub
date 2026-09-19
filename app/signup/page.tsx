@@ -8,11 +8,23 @@ import { Button } from "@/components/ui/Button";
 import { Card, Field, Input } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { GoogleButton } from "@/components/auth/GoogleButton";
+import { friendlyAuthError, retryAfterSeconds } from "@/lib/auth-errors";
 
 type Role = "student" | "teacher";
 type Stage = "form" | "verify";
 
-const RESEND_COOLDOWN_SECONDS = 30;
+// Supabase allows one auth email per address per 60 seconds; a shorter
+// cooldown just invites "you can only request this after N seconds" errors.
+const RESEND_COOLDOWN_SECONDS = 60;
+
+// Where a brand-new account lands. Coaches go to the activation page: with
+// payments ON it shows the fee + M-Pesa prompt; with payments OFF it activates
+// them for free and forwards to the dashboard. Students go straight to theirs.
+// The role can come from user metadata, so anything but "teacher" is treated
+// as a student rather than trusted as a URL segment.
+function postSignupPath(role: unknown): string {
+  return role === "teacher" ? "/teacher/activate" : "/student";
+}
 
 function SignupForm() {
   const router = useRouter();
@@ -48,16 +60,6 @@ function SignupForm() {
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
-  function friendlyAuthError(message: string): string {
-    if (/token.*(expired|invalid)|invalid.*(otp|token)/i.test(message)) {
-      return "That code is incorrect or has expired. Double-check it or request a new one.";
-    }
-    if (/already registered|already exists/i.test(message)) {
-      return "An account with this email already exists. Try logging in instead.";
-    }
-    return message;
-  }
-
   function validate(): string | null {
     if (!fullName.trim()) return "Enter your full name.";
     if (!/^\S+@\S+\.\S+$/.test(email)) return "Enter a valid email address.";
@@ -92,6 +94,10 @@ function SignupForm() {
         email,
         password,
         options: {
+          // Only used if the "Confirm signup" email still contains a link: it
+          // lands on the same callback that already exchanges auth codes, so a
+          // clicked link works too. The 6-digit code is the primary path.
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             role,
             full_name: fullName,
@@ -105,6 +111,7 @@ function SignupForm() {
       });
 
       if (signUpError) {
+        console.error("[signup] signUp failed:", signUpError.message);
         setError(friendlyAuthError(signUpError.message));
         return;
       }
@@ -125,12 +132,13 @@ function SignupForm() {
       // (which would just bounce back to /login).
       if (!data.session) {
         setStage("verify");
-        setInfo(`We've sent a 6-digit verification code to ${email}.`);
+        setInfo(`We've sent a 6-digit verification code to ${email}. It can take a minute — check your spam folder too.`);
         setResendCooldown(RESEND_COOLDOWN_SECONDS);
         return;
       }
 
-      router.push(`/${role}`);
+      // replace (not push) so Back doesn't return to a stale signup form.
+      router.replace(postSignupPath(role));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -160,6 +168,7 @@ function SignupForm() {
       });
 
       if (verifyError) {
+        console.error("[signup] verifyOtp failed:", verifyError.message);
         setError(friendlyAuthError(verifyError.message));
         return;
       }
@@ -175,8 +184,8 @@ function SignupForm() {
       // `role` state: on the /login?verify=1 resume path, `role` is just the
       // component's default ("student") since the user never filled out the
       // form on this page load.
-      const verifiedRole = (data.session.user.user_metadata?.role as Role | undefined) ?? role;
-      router.push(`/${verifiedRole}`);
+      const verifiedRole = data.session.user.user_metadata?.role ?? role;
+      router.replace(postSignupPath(verifiedRole));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -194,10 +203,18 @@ function SignupForm() {
 
     try {
       const supabase = createClient();
-      const { error: resendError } = await supabase.auth.resend({ type: "signup", email });
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      });
 
       if (resendError) {
+        console.error("[signup] resend failed:", resendError.message);
         setError(friendlyAuthError(resendError.message));
+        // Supabase tells us exactly how long to wait — honour it in the button.
+        const wait = retryAfterSeconds(resendError.message);
+        if (wait) setResendCooldown(wait);
         return;
       }
 

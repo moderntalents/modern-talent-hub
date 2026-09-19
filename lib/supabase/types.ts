@@ -13,6 +13,9 @@ export type LessonStatus = "draft" | "published";
 export type SubscriptionStatus = "pending_payment" | "active" | "cancelled" | "expired";
 export type TransactionStatus = "pending" | "completed" | "failed";
 export type WithdrawalStatus = "pending" | "processing" | "successful" | "failed" | "reversed";
+export type ActivationPaymentStatus = "pending" | "completed" | "failed" | "expired";
+
+export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 
 export interface Database {
   public: {
@@ -63,6 +66,8 @@ export interface Database {
           bank_name: string | null;
           bank_account: string | null;
           wallet_balance: number;
+          activated: boolean;
+          activated_at: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["teacher_profiles"]["Row"]> & {
           profile_id: string;
@@ -383,6 +388,83 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "withdrawal_requests_teacher_id_fkey";
+            columns: ["teacher_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      platform_settings: {
+        Row: {
+          key: string;
+          value: Json;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: Partial<Database["public"]["Tables"]["platform_settings"]["Row"]> & {
+          key: string;
+          value: Json;
+        };
+        Update: Partial<Database["public"]["Tables"]["platform_settings"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "platform_settings_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      platform_settings_history: {
+        Row: {
+          id: number;
+          key: string;
+          old_value: Json | null;
+          new_value: Json;
+          changed_by: string | null;
+          changed_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["platform_settings_history"]["Row"]> & {
+          key: string;
+          new_value: Json;
+        };
+        Update: Partial<Database["public"]["Tables"]["platform_settings_history"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "platform_settings_history_changed_by_fkey";
+            columns: ["changed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      coach_activation_payments: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          amount: number;
+          currency: string;
+          phone: string;
+          status: ActivationPaymentStatus;
+          checkout_request_id: string | null;
+          merchant_request_id: string | null;
+          provider_reference: string | null;
+          result_desc: string | null;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: Partial<Database["public"]["Tables"]["coach_activation_payments"]["Row"]> & {
+          teacher_id: string;
+          amount: number;
+          phone: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["coach_activation_payments"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "coach_activation_payments_teacher_id_fkey";
             columns: ["teacher_id"];
             isOneToOne: false;
             referencedRelation: "profiles";

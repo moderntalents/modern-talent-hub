@@ -49,10 +49,61 @@ lib/
   constants.ts              CBC subjects, marketplace categories, revenue split
 supabase/
   migrations/0001_init.sql  full schema, triggers, RLS policies, storage bucket policies
+  migrations/0002_coach_activation_fee.sql  platform_settings, activation payments ledger
+  migrations/0003_payments_toggle.sql       global payments on/off switch
+  migrations/0004_lock_down_roles.sql       blocks self-promotion to admin (signup + update)
   seed.sql                  CBC subjects seed data
 legacy-prototype/           the original static clickable prototype (archived)
 capacitor.config.ts         Android packaging config (see section 5)
 ```
+
+## Creating the first admin
+
+Roles can't be set from the app or the browser. Signup only ever creates `student` or
+`teacher` accounts, and `profiles.role` can't be updated from a signed-in session
+(migration `0004_lock_down_roles.sql`). To make someone an admin, have them sign up
+normally, then run this in the Supabase SQL Editor:
+
+```sql
+update profiles set role = 'admin'
+where id = (select id from auth.users where email = 'you@example.com');
+```
+
+To review who is currently an admin:
+
+```sql
+select p.id, u.email, p.created_at
+from profiles p join auth.users u on u.id = p.id
+where p.role = 'admin';
+```
+
+## Coach activation fee (admin-configurable)
+
+Coaches (teacher accounts) pay a one-time activation fee via M-Pesa STK Push. The price is
+**data, not code**: it lives in the `platform_settings` table (key `coach_activation_fee_kes`)
+and is edited at **`/admin/settings`** — no redeploy needed.
+
+- Run `supabase/migrations/0002_coach_activation_fee.sql` **before** deploying this version
+  (the teacher dashboard reads the new `teacher_profiles.activated` column).
+- No fee is seeded. Until an admin sets one, activation answers "fee not set" and charges
+  nothing. There is no hardcoded fallback price.
+- Flow: coach opens `/teacher/activate` → `POST /api/mpesa/activation` reads the *current* fee
+  from `platform_settings`, snapshots it on a `coach_activation_payments` row, and sends it as
+  the Daraja `Amount`. The client never supplies the amount. The shared callback
+  (`/api/mpesa/callback/<secret>`) marks the payment `completed`, and a DB trigger sets
+  `teacher_profiles.activated`.
+- Fee changes apply to the next payment; each change is recorded in
+  `platform_settings_history` (who, when, old → new). Values must be whole KSh between 1 and
+  250,000 (enforced by a CHECK constraint as well as the form).
+- **Payments switch.** `/admin/settings` has a global ON/OFF (`platform_settings.payments_enabled`,
+  migration `0003_payments_toggle.sql`, seeded OFF; a missing row also means OFF). While OFF the
+  app is free: coaches are activated automatically on first dashboard visit, students can join
+  any published activity, prices display as "Free", and both STK Push endpoints return 403
+  instead of charging. Turn it ON when you have a Paybill/Till and Daraja credentials.
+  Coaches activated during the free period stay activated.
+- Coaches who were already approved before this feature are **not** auto-activated (when
+  payments are ON); the
+  migration contains a commented-out `update` if you want to grandfather them.
 
 ## 1. What changed from prototype to functional application
 
@@ -105,11 +156,24 @@ environment (account creation and third-party credentials require you):
    `supabase/migrations/0001_init.sql` then `supabase/seed.sql`.
    Copy the Project URL, `anon` key and `service_role` key into your environment
    (see `.env.example`) as `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-   `SUPABASE_SERVICE_ROLE_KEY`. For the signup OTP flow (`app/signup/page.tsx`) to send a
-   6-digit code rather than only a magic link, confirm two things in **Authentication →
-   Providers → Email**: **Confirm email** is enabled (it is by default), and under
-   **Authentication → Email Templates → Confirm signup**, the template includes `{{ .Token }}`
-   (Supabase's default template already does — only relevant if you've customized it).
+   `SUPABASE_SERVICE_ROLE_KEY`. (Either Supabase's legacy `anon` key or the newer
+   `sb_publishable_…` key works in `NEXT_PUBLIC_SUPABASE_ANON_KEY`.) Then run the remaining
+   migrations `0002`–`0004` in order. For the signup code flow (`app/signup/page.tsx`) to
+   actually deliver a 6-digit code, **three dashboard settings are required — none can be
+   done from code**:
+   - **Authentication → Providers → Email → Confirm email**: on.
+   - **Authentication → Emails → Templates → Confirm signup** (older dashboards:
+     *Email Templates*): the template **must contain `{{ .Token }}`**. Supabase's *default*
+     template only contains a `{{ .ConfirmationURL }}` link and no code at all. Example body:
+     `<h2>Confirm your signup</h2><p>Your verification code is:</p><h1>{{ .Token }}</h1>`.
+   - **Custom SMTP** (**Authentication → Emails → SMTP Settings**, or *Project Settings →
+     Authentication*): Supabase's built-in mailer only delivers to your own project team
+     members' addresses and is capped at a couple of emails per hour, so real users get
+     nothing. Use a real provider (Resend, Brevo, SendGrid, Postmark, or Gmail SMTP with an
+     app password) and a sender on a domain you own.
+   Codes expire after the **Email OTP Expiration** (Authentication → Sign In / Providers →
+   Email; default 1 hour), and Supabase allows one email per address per 60 seconds — the
+   resend button waits for that.
 2. **Google OAuth, for the "Continue with Google" button on `/login` and `/signup`**
    (`app/auth/callback/route.ts` handles the redirect back). Two things to configure,
    both outside this codebase:
@@ -119,20 +183,23 @@ environment (account creation and third-party credentials require you):
      (find the exact URL in Supabase: **Authentication → Providers → Google**).
    - In the Supabase dashboard, **Authentication → Providers → Google**: toggle it **on** and
      paste the Client ID/Secret from the step above.
-   - In **Authentication → URL Configuration → Redirect URLs**, add the exact callback path
+   - In **Authentication → URL Configuration**, set **Site URL** to the production site
+     (`https://www.rutechbranding.ink`), and add to **Redirect URLs** the exact callback path
      (not just the bare origin) for every place you run this app —
+     `https://www.rutechbranding.ink/auth/callback` for production,
      `http://localhost:3000/auth/callback` for local dev, and
      `https://<your-vercel-domain>/auth/callback` for each Vercel/custom domain you deploy to
-     (a trailing wildcard like `https://<your-vercel-domain>/**` also works and covers this
+     (a trailing wildcard like `https://www.rutechbranding.ink/**` also works and covers this
      without needing exact-match entries). `app/auth/callback/route.ts` is the code side of
      this — it already builds the redirect from `window.location.origin` at click time
      (`components/auth/GoogleButton.tsx`), so it automatically adapts to whichever domain the
      user is actually on; nothing is hard-coded there. This Redirect URLs list is what
      Supabase checks that URL against, and it has to be configured here — no code change can
      do it for you.
-   Until both are done, clicking the Google button fails with the clear
-   "Google sign-in is currently unavailable" message (see below) rather than hanging —
-   email/password sign-up and login work independently of this.
+   Until all of this is done, clicking the Google button shows "Google sign-in isn't
+   available yet" (the button checks Supabase's public provider list first, instead of
+   sending the user to Supabase's raw JSON error page) — email/password sign-up and login
+   work independently of this.
 3. **A Safaricom Daraja app** (M-Pesa). Register at
    [developer.safaricom.co.ke](https://developer.safaricom.co.ke) for sandbox
    `MPESA_CONSUMER_KEY`/`MPESA_CONSUMER_SECRET` immediately; a **production** Paybill/Till

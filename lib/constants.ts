@@ -6,6 +6,16 @@ export const REVENUE_SPLIT = {
   platformPct: 30,
 } as const;
 
+// Key of the admin-editable coach activation price in the platform_settings
+// table (supabase/migrations/0002_coach_activation_fee.sql). The price itself
+// lives in the database — change it at /admin/settings, never in code. The
+// limits mirror the table's CHECK constraint: Daraja needs a whole-shilling
+// Amount and M-Pesa caps a single transaction at KSh 250,000.
+export const COACH_ACTIVATION_FEE_KEY = "coach_activation_fee_kes";
+// Global switch (boolean) in platform_settings. Off/missing = everything is free.
+export const PAYMENTS_ENABLED_KEY = "payments_enabled";
+export const ACTIVATION_FEE_LIMITS = { min: 1, max: 250_000 } as const;
+
 export const CBC_SUBJECTS = [
   "Mathematics",
   "English",

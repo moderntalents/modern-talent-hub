@@ -2,15 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { initiateStkPush, isMpesaConfigured } from "@/lib/mpesa";
-
-// Normalizes a Kenyan phone number to the 2547XXXXXXXX format Daraja requires.
-function normalizePhone(input: string): string | null {
-  const digits = input.replace(/\D/g, "");
-  if (digits.startsWith("254") && digits.length === 12) return digits;
-  if (digits.startsWith("0") && digits.length === 10) return "254" + digits.slice(1);
-  if (digits.startsWith("7") && digits.length === 9) return "254" + digits;
-  return null;
-}
+import { normalizeKenyanPhone as normalizePhone } from "@/lib/phone";
+import { arePaymentsEnabled } from "@/lib/settings";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -20,6 +13,18 @@ export async function POST(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  }
+
+  try {
+    if (!(await arePaymentsEnabled())) {
+      return NextResponse.json(
+        { error: "Payments are switched off — activities are free to join right now." },
+        { status: 403 },
+      );
+    }
+  } catch (err) {
+    console.error("[stkpush] payments setting lookup failed:", err);
+    return NextResponse.json({ error: "Could not check payment settings. Try again shortly." }, { status: 500 });
   }
 
   if (!isMpesaConfigured()) {

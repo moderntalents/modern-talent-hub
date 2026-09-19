@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
 import { getSignedUrl } from "@/lib/storage";
+import { arePaymentsEnabled } from "@/lib/settings";
 import { BILLING_LABELS, formatKes } from "@/lib/constants";
 import { Card, Badge } from "@/components/ui/Card";
 import { SubscribeForm } from "./SubscribeForm";
@@ -28,6 +29,10 @@ export default async function ActivityDetailPage({
 
   if (!activity) notFound();
 
+  // Payments off => everything is free, whatever price the teacher listed.
+  const paymentsOn = await arePaymentsEnabled();
+  const effectivePrice = paymentsOn ? activity.price : 0;
+
   const materialLinks = await Promise.all(
     (materials ?? []).map(async (m) => ({ ...m, url: await getSignedUrl("activity-materials", m.storage_path) })),
   );
@@ -52,13 +57,15 @@ export default async function ActivityDetailPage({
 
       <Card>
         <p className="font-head text-lg font-extrabold">
-          {activity.price > 0 ? formatKes(activity.price) : "Free"}
-          <span className="text-sm font-normal text-ink-faint">{BILLING_LABELS[activity.billing]}</span>
+          {effectivePrice > 0 ? formatKes(effectivePrice) : "Free"}
+          {effectivePrice > 0 && (
+            <span className="text-sm font-normal text-ink-faint">{BILLING_LABELS[activity.billing]}</span>
+          )}
         </p>
         <div className="mt-3">
           <SubscribeForm
             activityId={activity.id}
-            price={activity.price}
+            price={effectivePrice}
             alreadySubscribed={subscription?.status === "active"}
           />
         </div>

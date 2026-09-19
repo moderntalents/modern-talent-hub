@@ -1,6 +1,57 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+type StkCallback = {
+  ResultDesc?: string;
+  CallbackMetadata?: { Item?: { Name: string; Value: string | number }[] };
+};
+
+// Applies a Daraja result to a coach activation payment. Flipping the row to
+// "completed" fires trg_activation_completed, which sets teacher_profiles.activated.
+async function reconcileActivationPayment(
+  supabase: ReturnType<typeof createAdminClient>,
+  checkoutRequestId: string,
+  resultCode: number,
+  stkCallback: StkCallback,
+) {
+  const { data: payment } = await supabase
+    .from("coach_activation_payments")
+    .select("id, status")
+    .eq("checkout_request_id", checkoutRequestId)
+    .maybeSingle();
+
+  if (!payment || payment.status === "completed") return;
+
+  if (resultCode === 0) {
+    const receipt = stkCallback.CallbackMetadata?.Item?.find((i) => i.Name === "MpesaReceiptNumber")?.Value;
+    // Success is honoured even if the row was already retired as "expired" or
+    // "failed" locally: the coach's money really moved, so they must be activated.
+    const { error } = await supabase
+      .from("coach_activation_payments")
+      .update({
+        status: "completed",
+        provider_reference: String(receipt ?? ""),
+        result_desc: stkCallback.ResultDesc ?? null,
+      })
+      .eq("id", payment.id)
+      .neq("status", "completed");
+    if (error) {
+      // e.g. a second successful payment for an already-activated coach (the
+      // one-completed-per-coach index) — needs a manual refund/review.
+      console.error(
+        `[activation] PAID but could not complete payment ${payment.id} (${checkoutRequestId}):`,
+        error.message,
+      );
+    }
+  } else if (payment.status === "pending") {
+    await supabase
+      .from("coach_activation_payments")
+      .update({ status: "failed", result_desc: stkCallback.ResultDesc ?? null })
+      .eq("id", payment.id)
+      .eq("status", "pending");
+  }
+}
+
 /**
  * Safaricom Daraja calls this URL directly (server-to-server) after the payer
  * enters their M-Pesa PIN. Daraja does NOT cryptographically sign its
@@ -47,8 +98,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ sec
     .single();
 
   if (!transaction) {
-    // Acknowledge anyway so Safaricom doesn't retry indefinitely for a
+    // Not a subscription payment — it may be a coach activation payment.
+    // Either way, acknowledge so Safaricom doesn't retry indefinitely for a
     // transaction we have no record of.
+    await reconcileActivationPayment(supabase, checkoutRequestId, resultCode, stkCallback);
     return NextResponse.json({ ResultCode: 0, ResultDesc: "Accepted" });
   }
 

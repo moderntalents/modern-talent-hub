@@ -26,7 +26,10 @@ export default async function AdminTeachersPage() {
                   <p className="text-xs font-semibold text-[var(--success-text)]">
                     Wallet: {formatKes(t.wallet_balance)}
                   </p>
-                  <Badge tone={t.approved ? "success" : "warning"}>{t.approved ? "Approved" : "Pending"}</Badge>
+                  <div className="mt-1 flex gap-1.5">
+                    <Badge tone={t.approved ? "success" : "warning"}>{t.approved ? "Approved" : "Pending"}</Badge>
+                    <Badge tone={t.activated ? "success" : "warning"}>{t.activated ? "Activated" : "Not activated"}</Badge>
+                  </div>
                 </div>
                 <ApproveButton profileId={t.profile_id} approved={t.approved} />
               </Card>

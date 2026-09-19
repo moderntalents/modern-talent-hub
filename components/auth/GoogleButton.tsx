@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
+import { friendlyAuthError } from "@/lib/auth-errors";
 
 function GoogleIcon() {
   return (
@@ -27,16 +28,26 @@ function GoogleIcon() {
   );
 }
 
-// Maps raw Supabase auth errors to copy a user can act on. The technical
-// message (e.g. "Unsupported provider: provider is not enabled") is still
-// logged to the console for debugging — it's just not shown to the user,
-// since "the Google provider isn't toggled on in the Supabase dashboard"
-// means nothing to someone trying to sign up.
-function friendlyOAuthError(message: string): string {
-  if (/provider is not enabled|unsupported provider/i.test(message)) {
-    return "Google sign-in is currently unavailable. Please try again later or use email verification instead.";
+// signInWithOAuth() doesn't call Supabase — it just builds a URL and navigates
+// the browser there. So when the Google provider is switched off in the
+// Supabase dashboard, the user isn't shown our error handling: they land on a
+// raw JSON page ("Unsupported provider: provider is not enabled"). Supabase
+// publishes which providers are enabled on a public endpoint, so check it first
+// and show a friendly message instead of sending them to a dead end.
+// Returns true only when Supabase positively says Google is disabled; any
+// failure of the check itself falls through to the normal sign-in attempt.
+async function isGoogleDisabled(): Promise<boolean> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return false;
+  try {
+    const res = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: anonKey } });
+    if (!res.ok) return false;
+    const settings = await res.json();
+    return settings?.external?.google === false;
+  } catch {
+    return false;
   }
-  return message;
 }
 
 export function GoogleButton({
@@ -57,7 +68,18 @@ export function GoogleButton({
     onError?.("");
 
     try {
+      if (await isGoogleDisabled()) {
+        console.error("[GoogleButton] Google provider is not enabled in the Supabase dashboard.");
+        onError?.(friendlyAuthError("Unsupported provider: provider is not enabled"));
+        setLoading(false);
+        return;
+      }
+
       const supabase = createClient();
+      // redirectTo is built from the origin the user is actually on (the live
+      // site in production, localhost only when developing locally), so it can
+      // never send a production user to the wrong host. Supabase only honours
+      // it if it's in the dashboard's Redirect URLs allow-list.
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -69,13 +91,13 @@ export function GoogleButton({
       // component unmounts — loading only needs resetting on failure.
       if (error) {
         console.error("[GoogleButton] signInWithOAuth failed:", error.message);
-        onError?.(friendlyOAuthError(error.message));
+        onError?.(friendlyAuthError(error.message));
         setLoading(false);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("[GoogleButton] signInWithOAuth threw:", message);
-      onError?.(friendlyOAuthError(message) || "Could not start Google sign-in.");
+      onError?.(friendlyAuthError(message) || "Could not start Google sign-in.");
       setLoading(false);
     }
   }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { arePaymentsEnabled } from "@/lib/settings";
 import { ACTIVITY_CATEGORIES, BILLING_LABELS, formatKes, type ActivityCategoryId } from "@/lib/constants";
 import { Card, Badge } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -21,7 +22,10 @@ export default async function MarketplacePage({
     .eq("status", "published");
   if (category) query = query.eq("category", category);
 
-  const { data: activities } = await query.order("created_at", { ascending: false });
+  const [{ data: activities }, paymentsOn] = await Promise.all([
+    query.order("created_at", { ascending: false }),
+    arePaymentsEnabled(),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -66,8 +70,10 @@ export default async function MarketplacePage({
                   <p className="line-clamp-2 text-sm text-ink-soft">{activity.description}</p>
                 )}
                 <p className="font-head text-sm font-bold">
-                  {activity.price > 0 ? formatKes(activity.price) : "Free"}
-                  <span className="text-xs font-normal text-ink-faint">{BILLING_LABELS[activity.billing]}</span>
+                  {paymentsOn && activity.price > 0 ? formatKes(activity.price) : "Free"}
+                  {paymentsOn && activity.price > 0 && (
+                    <span className="text-xs font-normal text-ink-faint">{BILLING_LABELS[activity.billing]}</span>
+                  )}
                 </p>
               </Card>
             </Link>

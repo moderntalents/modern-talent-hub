@@ -8,19 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, Field, Input } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { GoogleButton } from "@/components/auth/GoogleButton";
-
-function friendlyAuthError(message: string): string {
-  if (/provider is not enabled|unsupported provider/i.test(message)) {
-    return "Google sign-in is currently unavailable. Please try again later or use email/password instead.";
-  }
-  if (/invalid login credentials/i.test(message)) {
-    return "Incorrect email or password.";
-  }
-  if (/email not confirmed/i.test(message)) {
-    return "Please verify your email before logging in — check your inbox for the verification code.";
-  }
-  return message;
-}
+import { friendlyAuthError, safeNextPath } from "@/lib/auth-errors";
 
 function LoginForm() {
   const router = useRouter();
@@ -66,7 +54,7 @@ function LoginForm() {
         .eq("id", data.user.id)
         .single();
 
-      const next = params.get("next");
+      const next = safeNextPath(params.get("next"));
       router.push(next || `/${profile?.role ?? "student"}`);
       router.refresh();
     } catch (err) {
