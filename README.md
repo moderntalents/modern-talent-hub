@@ -65,12 +65,23 @@ Separate from the 5-digit registration code. `/login` → **Forgot your password
 `/reset-password?token_hash=…` (`POST /api/auth/reset-password`) sets the new password, signs
 the account out everywhere, and points back to `/login`.
 
-- It uses Supabase's own recovery tokens (`auth.admin.generateLink`), but the email is sent by
-  our SMTP mailer (`lib/mailer.ts`, same `SMTP_USER`/`SMTP_PASS` as registration) — Supabase's
-  built-in mailer only reaches your own team members. So **no Supabase email template,
-  redirect-URL or SMTP setting is needed** for it.
+- It is always Supabase Auth recovery, and **needs a real sending mailbox — one of these two**:
+  1. **Vercel env (recommended; registration needs it too):** set `SMTP_USER` + `SMTP_PASS`
+     (Gmail app password). We mint a Supabase recovery token (`auth.admin.generateLink`) and email
+     the link with our mailer (`lib/mailer.ts`). **No Supabase dashboard setting is needed.**
+  2. **Supabase's own email** (used automatically when those env vars are absent —
+     `auth.resetPasswordForEmail`). Requires, in the Supabase dashboard:
+     **Authentication → URL Configuration**: Site URL `https://www.rutechbranding.ink`, and add
+     `https://www.rutechbranding.ink/reset-password` (or `https://www.rutechbranding.ink/**`) to
+     Redirect URLs; **Authentication → Emails → SMTP Settings**: enable custom SMTP (Gmail:
+     host `smtp.gmail.com`, port `465`, username = the Gmail address, password = a Gmail app
+     password, sender = that Gmail address). Supabase's built-in mailer only reaches your own
+     team members, so without custom SMTP real users get nothing. The default "Reset Password"
+     template works as-is.
 - The link is built from `NEXT_PUBLIC_SITE_URL` (default `https://www.rutechbranding.ink`, see
   `lib/site.ts`), never from the request's origin, and the code refuses a `*.vercel.app` value.
+  `/reset-password` accepts both link shapes (`?token_hash=…` from route 1, `#access_token=…`
+  from route 2).
 - The token is only spent when the new password is submitted (so email link-scanners can't use
   it up), works from any device/browser, and expires per Supabase's **Authentication → Sign In /
   Providers → Email → Email OTP Expiration**.
