@@ -474,6 +474,24 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      // Server-only (service role) helpers from 0005_registration_codes.sql.
+      auth_email_status: {
+        Args: { p_email: string };
+        Returns: { id: string; confirmed: boolean }[];
+      };
+      hit_rate_limit: {
+        Args: { p_key: string; p_max: number; p_window_seconds: number };
+        Returns: boolean;
+      };
+      issue_registration_code: {
+        Args: { p_email: string; p_code_hash: string; p_ttl_seconds?: number };
+        Returns: { status: "ok" | "cooldown" | "limit"; retry_after: number }[];
+      };
+      verify_registration_code: {
+        Args: { p_email: string; p_code_hash: string };
+        Returns: "ok" | "invalid" | "expired" | "locked" | "none";
+      };
+    };
   };
 }

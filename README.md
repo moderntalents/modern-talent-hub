@@ -15,7 +15,7 @@ longer the live app.
 |---|---|
 | Framework | Next.js 16 (App Router, Server Components + Server Actions), TypeScript |
 | Styling | Tailwind CSS v4, brand tokens ported 1:1 from the original prototype |
-| Auth | Supabase Auth — email + password with a 6-digit email OTP verification step (no admin approval needed for signup), Google OAuth. Role stored on `profiles.role` |
+| Auth | Supabase Auth — email + password with a 5-digit emailed verification code (custom, see setup step 1; no admin approval needed for signup), Google OAuth. Role stored on `profiles.role` |
 | Database | Supabase Postgres, full schema + Row Level Security in `supabase/migrations/0001_init.sql` |
 | File storage | Supabase Storage (private buckets, signed URLs) |
 | Payments | Safaricom Daraja API (M-Pesa STK Push), real HTTP calls — no simulated success |
@@ -52,10 +52,30 @@ supabase/
   migrations/0002_coach_activation_fee.sql  platform_settings, activation payments ledger
   migrations/0003_payments_toggle.sql       global payments on/off switch
   migrations/0004_lock_down_roles.sql       blocks self-promotion to admin (signup + update)
+  migrations/0005_registration_codes.sql    5-digit registration code storage + rate limits
   seed.sql                  CBC subjects seed data
 legacy-prototype/           the original static clickable prototype (archived)
 capacitor.config.ts         Android packaging config (see section 5)
 ```
+
+## Password reset ("Forgot your password?")
+
+Separate from the 5-digit registration code. `/login` → **Forgot your password?** →
+`/forgot-password` (`POST /api/auth/forgot-password`) emails a one-time link →
+`/reset-password?token_hash=…` (`POST /api/auth/reset-password`) sets the new password, signs
+the account out everywhere, and points back to `/login`.
+
+- It uses Supabase's own recovery tokens (`auth.admin.generateLink`), but the email is sent by
+  our SMTP mailer (`lib/mailer.ts`, same `SMTP_USER`/`SMTP_PASS` as registration) — Supabase's
+  built-in mailer only reaches your own team members. So **no Supabase email template,
+  redirect-URL or SMTP setting is needed** for it.
+- The link is built from `NEXT_PUBLIC_SITE_URL` (default `https://www.rutechbranding.ink`, see
+  `lib/site.ts`), never from the request's origin, and the code refuses a `*.vercel.app` value.
+- The token is only spent when the new password is submitted (so email link-scanners can't use
+  it up), works from any device/browser, and expires per Supabase's **Authentication → Sign In /
+  Providers → Email → Email OTP Expiration**.
+- The form answers the same whether or not the email is registered (no account discovery),
+  and is rate-limited per email (3/hour) and per IP. Requires migration `0005` (`hit_rate_limit`).
 
 ## Creating the first admin
 
@@ -158,22 +178,20 @@ environment (account creation and third-party credentials require you):
    (see `.env.example`) as `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
    `SUPABASE_SERVICE_ROLE_KEY`. (Either Supabase's legacy `anon` key or the newer
    `sb_publishable_…` key works in `NEXT_PUBLIC_SUPABASE_ANON_KEY`.) Then run the remaining
-   migrations `0002`–`0004` in order. For the signup code flow (`app/signup/page.tsx`) to
-   actually deliver a 6-digit code, **three dashboard settings are required — none can be
-   done from code**:
-   - **Authentication → Providers → Email → Confirm email**: on.
-   - **Authentication → Emails → Templates → Confirm signup** (older dashboards:
-     *Email Templates*): the template **must contain `{{ .Token }}`**. Supabase's *default*
-     template only contains a `{{ .ConfirmationURL }}` link and no code at all. Example body:
-     `<h2>Confirm your signup</h2><p>Your verification code is:</p><h1>{{ .Token }}</h1>`.
-   - **Custom SMTP** (**Authentication → Emails → SMTP Settings**, or *Project Settings →
-     Authentication*): Supabase's built-in mailer only delivers to your own project team
-     members' addresses and is capped at a couple of emails per hour, so real users get
-     nothing. Use a real provider (Resend, Brevo, SendGrid, Postmark, or Gmail SMTP with an
-     app password) and a sender on a domain you own.
-   Codes expire after the **Email OTP Expiration** (Authentication → Sign In / Providers →
-   Email; default 1 hour), and Supabase allows one email per address per 60 seconds — the
-   resend button waits for that.
+   migrations `0002`–`0005` in order.
+
+   **Registration verification is our own 5-digit email code, not Supabase's** (Supabase's
+   email OTP can't be shorter than 6 digits). `app/signup/page.tsx` calls
+   `/api/auth/send-code`, which emails a random 5-digit code; `/api/auth/verify-registration`
+   checks it and only then creates the (already confirmed) account. The email contains the
+   code and no link. Codes are stored only as a keyed hash, expire after 10 minutes, allow 5
+   wrong guesses, and can be re-sent once a minute (5 per hour) — all enforced in
+   `0005_registration_codes.sql`. To make it work, set these in Vercel (see `.env.example`):
+   `SMTP_USER`, `SMTP_PASS` (a Gmail **app password**) and `VERIFICATION_CODE_SECRET`
+   (`openssl rand -hex 32`). No Supabase email template or SMTP setting is involved.
+   Keep **Authentication → Providers → Email → Confirm email** switched **on**. Gmail SMTP
+   allows roughly 500 messages/day — move `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` to a
+   transactional provider (Resend, Brevo, SendGrid) when you outgrow it.
 2. **Google OAuth, for the "Continue with Google" button on `/login` and `/signup`**
    (`app/auth/callback/route.ts` handles the redirect back). Two things to configure,
    both outside this codebase:

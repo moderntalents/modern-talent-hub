@@ -1,20 +1,20 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { Card, Field, Input } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { GoogleButton } from "@/components/auth/GoogleButton";
-import { friendlyAuthError, retryAfterSeconds } from "@/lib/auth-errors";
+import { friendlyAuthError } from "@/lib/auth-errors";
 
 type Role = "student" | "teacher";
 type Stage = "form" | "verify";
 
-// Supabase allows one auth email per address per 60 seconds; a shorter
-// cooldown just invites "you can only request this after N seconds" errors.
+// The server allows one new code per email every 60 seconds
+// (issue_registration_code in migration 0005); the button mirrors that.
 const RESEND_COOLDOWN_SECONDS = 60;
 
 // Where a brand-new account lands. Coaches go to the activation page: with
@@ -28,16 +28,10 @@ function postSignupPath(role: unknown): string {
 
 function SignupForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  // Lets /login send someone back here to finish verifying a previous
-  // signup (?verify=1&email=...) instead of leaving them stuck with no way
-  // to re-enter a code once the in-memory form state from their original
-  // signup is gone (e.g. they closed the tab before verifying).
-  const resumeEmail = searchParams.get("verify") === "1" ? searchParams.get("email") : null;
-  const [stage, setStage] = useState<Stage>(resumeEmail ? "verify" : "form");
+  const [stage, setStage] = useState<Stage>("form");
   const [role, setRole] = useState<Role>("student");
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState(resumeEmail ?? "");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -50,9 +44,7 @@ function SignupForm() {
   const [resending, setResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(
-    resumeEmail ? `Enter the code we sent to ${resumeEmail}, or request a new one.` : null,
-  );
+  const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -83,75 +75,51 @@ function SignupForm() {
     setError(null);
     setInfo(null);
 
-    // Everything below can throw — a misconfigured Supabase client, a
-    // network failure, whatever — and an uncaught throw here previously left
-    // the button spinning forever with no feedback (loading never reset,
-    // nothing to catch it). try/finally guarantees loading always clears.
+    // Everything below can throw (network failure, etc.) — try/finally
+    // guarantees the button never spins forever.
     try {
-      const supabase = createClient();
-
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          // Only used if the "Confirm signup" email still contains a link: it
-          // lands on the same callback that already exchanges auth codes, so a
-          // clicked link works too. The 6-digit code is the primary path.
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-          data: {
-            role,
-            full_name: fullName,
-            phone,
-            grade,
-            school_name: schoolName,
-            specialty,
-            bio,
-          },
-        },
-      });
-
-      if (signUpError) {
-        console.error("[signup] signUp failed:", signUpError.message);
-        setError(friendlyAuthError(signUpError.message));
-        return;
-      }
-
-      // When email confirmation is required and the email is already
-      // registered & confirmed, Supabase deliberately doesn't return an
-      // error (to avoid leaking which emails exist) — instead it returns a
-      // user object with an empty identities array. This is the documented
-      // way to detect that case client-side.
-      if (data.user && data.user.identities && data.user.identities.length === 0) {
-        setError("An account with this email already exists. Try logging in instead.");
-        return;
-      }
-
-      // signUp() only returns a session when email confirmation is off. If
-      // it's required, there's no session yet — move to the "enter the code
-      // we emailed you" step instead of racing the dashboard's auth check
-      // (which would just bounce back to /login).
-      if (!data.session) {
+      // The account is NOT created yet: the server only emails a code. It is
+      // created after the code is verified (see handleVerify).
+      if (await requestCode()) {
         setStage("verify");
-        setInfo(`We've sent a 6-digit verification code to ${email}. It can take a minute — check your spam folder too.`);
-        setResendCooldown(RESEND_COOLDOWN_SECONDS);
-        return;
+        setOtp("");
+        setInfo(
+          `We've sent a 5-digit verification code to ${email.trim()}. It expires in 10 minutes — check your spam folder too.`,
+        );
       }
-
-      // replace (not push) so Back doesn't return to a stale signup form.
-      router.replace(postSignupPath(role));
-      router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(friendlyAuthError(err instanceof Error ? err.message : "") || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   }
 
+  // Shared by "Create account" and "Resend code". Asks the server to email a
+  // fresh 5-digit code; returns true only if the server confirms it sent one
+  // (we never claim an email went out when it didn't).
+  async function requestCode(): Promise<boolean> {
+    const res = await fetch("/api/auth/send-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      setError(data.error || "We couldn't send the verification code. Please try again.");
+      if (typeof data.retryAfter === "number") setResendCooldown(data.retryAfter);
+      return false;
+    }
+
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    return true;
+  }
+
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     const code = otp.trim();
-    if (code.length < 6) {
-      setError("Enter the 6-digit code from your email.");
+    if (!/^\d{5}$/.test(code)) {
+      setError("Invalid verification code.");
       return;
     }
 
@@ -160,35 +128,48 @@ function SignupForm() {
     setInfo(null);
 
     try {
-      const supabase = createClient();
-      const { data, error: verifyError } = await supabase.auth.verifyOtp({
-        email,
-        token: code,
-        type: "signup",
+      // The server checks the code and, only if it matches, creates the
+      // (already confirmed) account from the details entered on the form.
+      const res = await fetch("/api/auth/verify-registration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          code,
+          password,
+          fullName,
+          phone,
+          role,
+          grade,
+          schoolName,
+          specialty,
+          bio,
+        }),
       });
+      const data = await res.json().catch(() => ({}));
 
-      if (verifyError) {
-        console.error("[signup] verifyOtp failed:", verifyError.message);
-        setError(friendlyAuthError(verifyError.message));
+      if (!res.ok) {
+        setError(data.error || "Invalid verification code.");
         return;
       }
 
-      if (!data.session) {
-        setError("Verification succeeded but no session was returned — please try logging in.");
+      // Verified and created — sign in with the credentials they just chose.
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (signInError) {
+        console.error("[signup] sign-in after verification failed:", signInError.message);
+        router.replace("/login");
         return;
       }
 
-      // Verified and Supabase returned a live session — log straight in, no
-      // separate login step and no admin approval involved. Read the role
-      // back from the verified session's own metadata rather than the local
-      // `role` state: on the /login?verify=1 resume path, `role` is just the
-      // component's default ("student") since the user never filled out the
-      // form on this page load.
-      const verifiedRole = data.session.user.user_metadata?.role ?? role;
-      router.replace(postSignupPath(verifiedRole));
+      // replace (not push) so Back doesn't return to the signup form.
+      router.replace(postSignupPath(role));
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(friendlyAuthError(err instanceof Error ? err.message : "") || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -202,26 +183,12 @@ function SignupForm() {
     setInfo(null);
 
     try {
-      const supabase = createClient();
-      const { error: resendError } = await supabase.auth.resend({
-        type: "signup",
-        email,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-      });
-
-      if (resendError) {
-        console.error("[signup] resend failed:", resendError.message);
-        setError(friendlyAuthError(resendError.message));
-        // Supabase tells us exactly how long to wait — honour it in the button.
-        const wait = retryAfterSeconds(resendError.message);
-        if (wait) setResendCooldown(wait);
-        return;
+      if (await requestCode()) {
+        setOtp("");
+        setInfo(`A new code has been sent to ${email.trim()}. Any earlier code no longer works.`);
       }
-
-      setInfo(`A new code has been sent to ${email}.`);
-      setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not resend the code. Please try again.");
+      setError(friendlyAuthError(err instanceof Error ? err.message : "") || "Could not resend the code. Please try again.");
     } finally {
       setResending(false);
     }
@@ -233,7 +200,7 @@ function SignupForm() {
         <div className="text-center">
           <h1 className="font-head text-2xl font-extrabold">Verify your email</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Enter the 6-digit code we sent to <span className="font-semibold text-ink">{email}</span>.
+            Enter the 5-digit code we sent to <span className="font-semibold text-ink">{email.trim()}</span>.
           </p>
         </div>
 
@@ -242,11 +209,11 @@ function SignupForm() {
             <Field label="Verification code">
               <Input
                 value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="123456"
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 5))}
+                placeholder="12345"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                maxLength={6}
+                maxLength={5}
                 autoFocus
                 className="text-center text-lg tracking-[0.5em]"
               />

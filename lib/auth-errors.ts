@@ -10,7 +10,7 @@ export function friendlyAuthError(message: string): string {
     return "Incorrect email or password.";
   }
   if (/email not confirmed/i.test(message)) {
-    return "Please verify your email before logging in — enter the 6-digit code we emailed you.";
+    return "This email hasn't been verified yet. Register again to get a new 5-digit verification code.";
   }
   if (/token.*(expired|invalid)|invalid.*(otp|token)|otp.*expired/i.test(message)) {
     return "That code is incorrect or has expired. Double-check it or request a new one.";
@@ -30,7 +30,7 @@ export function friendlyAuthError(message: string): string {
     return "We couldn't send the verification email right now. Please try again in a few minutes, or contact support if it keeps happening.";
   }
   if (/code verifier|pkce/i.test(message)) {
-    return "Please open the link in the same browser you signed up in, or use the 6-digit code from the email instead.";
+    return "Sign-in could not be completed. Please go back to the login page and try again.";
   }
   if (/failed to fetch|networkerror|network request failed/i.test(message)) {
     return "Network problem — check your connection and try again.";

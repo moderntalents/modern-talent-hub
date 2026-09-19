@@ -88,14 +88,16 @@ function LoginForm() {
           <Field label="Password">
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
+          <div className="-mt-2 text-right">
+            <Link href="/forgot-password" className="text-sm font-semibold text-brand-cyan-deep">
+              Forgot your password?
+            </Link>
+          </div>
 
           {error && <ErrorBanner message={error} />}
           {needsVerification && (
-            <Link
-              href={`/signup?verify=1&email=${encodeURIComponent(email)}`}
-              className="-mt-2 text-center text-sm font-semibold text-brand-cyan-deep"
-            >
-              Enter or resend your verification code
+            <Link href="/signup" className="-mt-2 text-center text-sm font-semibold text-brand-cyan-deep">
+              Register again to get a new verification code
             </Link>
           )}
 
