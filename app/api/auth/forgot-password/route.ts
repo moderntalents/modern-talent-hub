@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getClientIp, normalizeEmail } from "@/lib/verification";
-import { isMailerConfigured, sendMail } from "@/lib/mailer";
+import { isMailerConfigured, missingMailerConfig, sendMail } from "@/lib/mailer";
+import { missingDatabaseSetupResponse } from "@/lib/db-errors";
 import { getSiteUrl } from "@/lib/site";
 
 // Password recovery, step 1: email the user a reset link. Always Supabase Auth
@@ -48,6 +49,8 @@ export async function POST(request: Request) {
     admin.rpc("hit_rate_limit", { p_key: `reset-email:${email}`, p_max: 3, p_window_seconds: 3600 }),
   ]);
   if (ipError || emailError) {
+    const setupProblem = missingDatabaseSetupResponse("forgot-password", ipError ?? emailError);
+    if (setupProblem) return setupProblem;
     console.error("[forgot-password] rate limit check failed:", ipError?.message ?? emailError?.message);
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }
@@ -61,6 +64,10 @@ export async function POST(request: Request) {
   // Route 2: no mailer configured here, so let Supabase Auth send its own
   // password-reset email.
   if (!isMailerConfigured()) {
+    console.warn(
+      `[forgot-password] SMTP not visible to this deployment (missing: ${missingMailerConfig().join(", ")}) — ` +
+        "using Supabase's own reset email instead.",
+    );
     return sendViaSupabase(email, siteUrl);
   }
 

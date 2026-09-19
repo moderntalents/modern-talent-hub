@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac, randomInt } from "node:crypto";
-import { isMailerConfigured, sendMail } from "@/lib/mailer";
+import { missingMailerConfig, sendMail } from "@/lib/mailer";
 
 // Registration verification codes (see supabase/migrations/0005_registration_codes.sql
 // for the storage and limits). Sending uses the shared SMTP mailer (lib/mailer.ts).
@@ -13,11 +13,18 @@ export const CODE_LENGTH = 5;
 export const CODE_TTL_SECONDS = 10 * 60;
 
 export function isVerificationConfigured(): boolean {
-  return Boolean(
-    isMailerConfigured() &&
-      process.env.VERIFICATION_CODE_SECRET &&
-      process.env.VERIFICATION_CODE_SECRET.length >= 32,
-  );
+  return missingVerificationConfig().length === 0;
+}
+
+/** What this server can't see or has set wrongly (names/length only, never values) — for logs. */
+export function missingVerificationConfig(): string[] {
+  const missing = missingMailerConfig();
+  const secret = process.env.VERIFICATION_CODE_SECRET;
+  if (!secret) missing.push("VERIFICATION_CODE_SECRET");
+  else if (secret.length < 32) {
+    missing.push(`VERIFICATION_CODE_SECRET (only ${secret.length} characters; needs 32 or more)`);
+  }
+  return missing;
 }
 
 /** Uniformly random 5-digit number (10000–99999) from the OS CSPRNG — never Math.random. */

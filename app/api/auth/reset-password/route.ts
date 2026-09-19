@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getClientIp } from "@/lib/verification";
+import { missingDatabaseSetupResponse } from "@/lib/db-errors";
 
 // Password recovery, step 2: the user arrives from the emailed link with a
 // one-time token and chooses a new password.
@@ -38,6 +39,8 @@ export async function POST(request: Request) {
     p_window_seconds: 3600,
   });
   if (limitError) {
+    const setupProblem = missingDatabaseSetupResponse("reset-password", limitError);
+    if (setupProblem) return setupProblem;
     console.error("[reset-password] rate limit check failed:", limitError.message);
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }

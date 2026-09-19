@@ -58,6 +58,14 @@ legacy-prototype/           the original static clickable prototype (archived)
 capacitor.config.ts         Android packaging config (see section 5)
 ```
 
+## First-time database setup (required — nothing works without it)
+
+Supabase Auth exists on a fresh project, but **the app's tables and functions do not**. On an
+empty project, open the Supabase **SQL Editor** for the *same project whose URL is
+`NEXT_PUBLIC_SUPABASE_URL` in Vercel*, paste all of [`supabase/setup-all.sql`](supabase/setup-all.sql)
+and run it **once**. (It is `0001`→`0005` + the seed, in order.) Signs of a missing setup: login
+loops back to `/login`, registration/password-reset return "database setup is incomplete".
+
 ## Password reset ("Forgot your password?")
 
 Separate from the 5-digit registration code. `/login` → **Forgot your password?** →
@@ -71,14 +79,14 @@ the account out everywhere, and points back to `/login`.
      the link with our mailer (`lib/mailer.ts`). **No Supabase dashboard setting is needed.**
   2. **Supabase's own email** (used automatically when those env vars are absent —
      `auth.resetPasswordForEmail`). Requires, in the Supabase dashboard:
-     **Authentication → URL Configuration**: Site URL `https://www.rutechbranding.ink`, and add
-     `https://www.rutechbranding.ink/reset-password` (or `https://www.rutechbranding.ink/**`) to
+     **Authentication → URL Configuration**: Site URL `https://rutechbranding.ink`, and add
+     `https://rutechbranding.ink/reset-password` and `https://www.rutechbranding.ink/reset-password` (or the two `/**` forms) to
      Redirect URLs; **Authentication → Emails → SMTP Settings**: enable custom SMTP (Gmail:
      host `smtp.gmail.com`, port `465`, username = the Gmail address, password = a Gmail app
      password, sender = that Gmail address). Supabase's built-in mailer only reaches your own
      team members, so without custom SMTP real users get nothing. The default "Reset Password"
      template works as-is.
-- The link is built from `NEXT_PUBLIC_SITE_URL` (default `https://www.rutechbranding.ink`, see
+- The link is built from `NEXT_PUBLIC_SITE_URL` (default `https://rutechbranding.ink`, see
   `lib/site.ts`), never from the request's origin, and the code refuses a `*.vercel.app` value.
   `/reset-password` accepts both link shapes (`?token_hash=…` from route 1, `#access_token=…`
   from route 2).

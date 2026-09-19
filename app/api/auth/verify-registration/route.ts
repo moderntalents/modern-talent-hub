@@ -5,8 +5,10 @@ import {
   getClientIp,
   hashCode,
   isVerificationConfigured,
+  missingVerificationConfig,
   normalizeEmail,
 } from "@/lib/verification";
+import { missingDatabaseSetupResponse } from "@/lib/db-errors";
 
 const str = (v: unknown, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
@@ -17,6 +19,7 @@ const str = (v: unknown, max = 200) => (typeof v === "string" ? v.trim().slice(0
 // can exist for someone to squat on.
 export async function POST(request: Request) {
   if (!isVerificationConfigured()) {
+    console.error(`[verify-registration] not configured — missing: ${missingVerificationConfig().join(", ")}`);
     return NextResponse.json(
       { error: "Email verification isn't set up on this site yet. Please contact support." },
       { status: 503 },
@@ -60,6 +63,8 @@ export async function POST(request: Request) {
     p_window_seconds: 3600,
   });
   if (limitError) {
+    const setupProblem = missingDatabaseSetupResponse("verify-registration", limitError);
+    if (setupProblem) return setupProblem;
     console.error("[verify-registration] rate limit check failed:", limitError.message);
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }

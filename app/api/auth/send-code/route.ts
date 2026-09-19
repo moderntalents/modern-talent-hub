@@ -6,9 +6,11 @@ import {
   getClientIp,
   hashCode,
   isVerificationConfigured,
+  missingVerificationConfig,
   normalizeEmail,
   sendVerificationEmail,
 } from "@/lib/verification";
+import { missingDatabaseSetupResponse } from "@/lib/db-errors";
 
 // Issues a fresh 5-digit registration code and emails it. Used both for the
 // first send and for "Resend code" — a new code replaces (and invalidates) the
@@ -16,7 +18,7 @@ import {
 // verified (see /api/auth/verify-registration).
 export async function POST(request: Request) {
   if (!isVerificationConfigured()) {
-    console.error("[send-code] SMTP_USER / SMTP_PASS / VERIFICATION_CODE_SECRET (32+ chars) are not set.");
+    console.error(`[send-code] not configured — missing: ${missingVerificationConfig().join(", ")}`);
     return NextResponse.json(
       { error: "Email verification isn't set up on this site yet. Please contact support." },
       { status: 503 },
@@ -39,6 +41,8 @@ export async function POST(request: Request) {
     p_window_seconds: 3600,
   });
   if (limitError) {
+    const setupProblem = missingDatabaseSetupResponse("send-code", limitError);
+    if (setupProblem) return setupProblem;
     console.error("[send-code] rate limit check failed:", limitError.message);
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }

@@ -6,7 +6,9 @@ import "server-only";
 // no matter which address the request happened to come from.
 //
 // Override with NEXT_PUBLIC_SITE_URL (e.g. http://localhost:3000 for local dev).
-const DEFAULT_SITE_URL = "https://www.rutechbranding.ink";
+// The bare domain redirects to www and was checked to keep the query string
+// (?token_hash=…) intact through that redirect.
+const DEFAULT_SITE_URL = "https://rutechbranding.ink";
 
 export function getSiteUrl(): string {
   const raw = (process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_SITE_URL).trim();

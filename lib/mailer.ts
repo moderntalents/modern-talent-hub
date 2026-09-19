@@ -7,7 +7,12 @@ import nodemailer from "nodemailer";
 // Optional: SMTP_HOST (default smtp.gmail.com), SMTP_PORT (default 465), SMTP_FROM.
 
 export function isMailerConfigured(): boolean {
-  return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+  return missingMailerConfig().length === 0;
+}
+
+/** Names (never values) of the required SMTP variables this server can't see — for logs. */
+export function missingMailerConfig(): string[] {
+  return ["SMTP_USER", "SMTP_PASS"].filter((name) => !process.env[name]);
 }
 
 export async function sendMail(message: { to: string; subject: string; text: string; html: string }): Promise<void> {
