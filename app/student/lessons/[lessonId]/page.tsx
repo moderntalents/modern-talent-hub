@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
 import { getSignedUrl } from "@/lib/storage";
 import { humanFileSize } from "@/lib/format";
+import { getVideoSource } from "@/lib/video";
+import { isVideoFile } from "@/lib/uploads";
 import { Card } from "@/components/ui/Card";
 import { AssignmentSubmitForm } from "./AssignmentSubmitForm";
 
@@ -37,6 +39,13 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
     })),
   );
 
+  // A pasted YouTube/Vimeo link becomes an embedded player; a direct file link
+  // plays in a <video>. Uploaded video files play inline; everything else is a
+  // download.
+  const lessonVideo = getVideoSource(lesson.video_url);
+  const videoMaterials = materialLinks.filter((m) => isVideoFile(m.file_type, m.file_name));
+  const otherMaterials = materialLinks.filter((m) => !isVideoFile(m.file_type, m.file_name));
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -47,19 +56,42 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
         {lesson.description && <p className="mt-1 text-sm text-ink-soft">{lesson.description}</p>}
       </div>
 
-      {lesson.video_url && (
+      {lessonVideo && (
         <div className="overflow-hidden rounded-[var(--radius-brand)] border border-line bg-black">
-          <video src={lesson.video_url} controls className="aspect-video w-full" />
+          {lessonVideo.kind === "embed" ? (
+            <iframe
+              src={lessonVideo.src}
+              title={lesson.title}
+              className="aspect-video w-full"
+              allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          ) : (
+            <video src={lessonVideo.src} controls className="aspect-video w-full" />
+          )}
         </div>
       )}
 
-      {materialLinks.length > 0 && (
+      {videoMaterials.map(
+        (m) =>
+          m.url && (
+            <div key={m.id} className="flex flex-col gap-1.5">
+              <p className="text-sm font-semibold">{m.file_name}</p>
+              <div className="overflow-hidden rounded-[var(--radius-brand)] border border-line bg-black">
+                <video src={m.url} controls preload="metadata" className="aspect-video w-full" />
+              </div>
+            </div>
+          ),
+      )}
+
+      {otherMaterials.length > 0 && (
         <div>
           <h2 className="mb-2 font-head text-sm font-bold uppercase tracking-wide text-ink-faint">
             Materials
           </h2>
           <div className="flex flex-col gap-2">
-            {materialLinks.map((m) => (
+            {otherMaterials.map((m) => (
               <Card key={m.id} className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold">{m.file_name}</p>

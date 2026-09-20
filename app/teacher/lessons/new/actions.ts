@@ -1,13 +1,18 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 export interface FormState {
   error?: string;
+  lessonId?: string;
 }
 
-export async function createLesson(_prevState: FormState, formData: FormData): Promise<FormState> {
+// Creates the draft lesson and returns its id. The form then uploads any
+// selected files straight from the browser into storage (under this lesson's
+// folder, which is what the storage policy requires) and attaches them, then
+// opens the lesson page. The page redirect happens in the form, not here,
+// because the files can only be uploaded once the lesson id exists.
+export async function createLesson(formData: FormData): Promise<FormState> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -30,6 +35,9 @@ export async function createLesson(_prevState: FormState, formData: FormData): P
 
   if (!subjectId) return { error: "Choose a subject." };
   if (!title) return { error: "Enter a lesson title." };
+  if (videoUrl && !/^https?:\/\//i.test(videoUrl)) {
+    return { error: "The video link must start with http:// or https://" };
+  }
 
   const { data: lesson, error } = await supabase
     .from("lessons")
@@ -46,5 +54,5 @@ export async function createLesson(_prevState: FormState, formData: FormData): P
 
   if (error) return { error: error.message };
 
-  redirect(`/teacher/lessons/${lesson.id}`);
+  return { lessonId: lesson.id };
 }

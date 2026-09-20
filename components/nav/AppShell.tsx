@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -36,9 +37,14 @@ export function AppShell({
       {/* Desktop / tablet sidebar */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-surface p-4 md:flex">
         <div className="mb-6 flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-cyan font-head text-sm font-extrabold text-ink">
-            MTH
-          </span>
+          <Image
+            src="/icons/logo-mark.png"
+            alt="Modern Talent Hub"
+            width={340}
+            height={278}
+            priority
+            className="h-10 w-10 shrink-0 object-contain"
+          />
           <div>
             <p className="font-head text-sm font-bold leading-tight">Modern Talent Hub</p>
             <p className="text-xs text-ink-faint">{roleLabel}</p>
@@ -73,9 +79,13 @@ export function AppShell({
         {/* Mobile top bar */}
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-3 md:hidden">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-cyan font-head text-xs font-extrabold text-ink">
-              MTH
-            </span>
+            <Image
+              src="/icons/logo-mark.png"
+              alt="Modern Talent Hub"
+              width={340}
+              height={278}
+              className="h-9 w-9 shrink-0 object-contain"
+            />
             <p className="text-sm font-semibold">{userName}</p>
           </div>
           <button onClick={signOut} className="text-xs font-semibold text-brand-red-deep">
