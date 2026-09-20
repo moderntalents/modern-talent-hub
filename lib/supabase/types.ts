@@ -548,6 +548,60 @@ export interface Database {
           },
         ];
       };
+      // 0010_age_and_guardian_consent.sql — written by server code only.
+      age_records: {
+        Row: {
+          profile_id: string;
+          date_of_birth: string;
+          guardian_email: string | null;
+          consent_status: "not_required" | "pending" | "granted" | "declined";
+          consent_decided_at: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["age_records"]["Row"]> & {
+          profile_id: string;
+          date_of_birth: string;
+          consent_status: "not_required" | "pending" | "granted" | "declined";
+        };
+        Update: Partial<Database["public"]["Tables"]["age_records"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "age_records_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      guardian_consent_requests: {
+        Row: {
+          id: string;
+          profile_id: string;
+          guardian_email: string;
+          token_hash: string;
+          expires_at: string;
+          decided_at: string | null;
+          decision: "approved" | "declined" | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["guardian_consent_requests"]["Row"]> & {
+          profile_id: string;
+          guardian_email: string;
+          token_hash: string;
+          expires_at: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["guardian_consent_requests"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "guardian_consent_requests_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -572,6 +626,11 @@ export interface Database {
       delete_user_identities: {
         Args: { p_user_id: string };
         Returns: undefined;
+      };
+      // Server-only, from 0010_age_and_guardian_consent.sql.
+      decide_guardian_consent: {
+        Args: { p_token_hash: string; p_decision: string };
+        Returns: "approved" | "declined" | "used" | "expired" | "invalid";
       };
     };
   };

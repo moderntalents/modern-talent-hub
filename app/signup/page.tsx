@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Card, Field, Input } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { GoogleButton } from "@/components/auth/GoogleButton";
+import { DateOfBirthField, EMPTY_DOB, dobToAge, dobToIso, type DobParts } from "@/components/auth/DateOfBirthField";
+import { CHILD_AGE, ADULT_AGE, guardianEmailProblem } from "@/lib/age";
 import { friendlyAuthError } from "@/lib/auth-errors";
 
 type Role = "student" | "teacher";
@@ -33,6 +35,8 @@ function SignupForm() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [dob, setDob] = useState<DobParts>(EMPTY_DOB);
+  const [guardianEmail, setGuardianEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [grade, setGrade] = useState("");
@@ -46,6 +50,11 @@ function SignupForm() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
+  // What the age answer changes on this form. The server re-checks everything itself.
+  const age = dobToAge(dob); // null until a real date is chosen
+  const isMinor = age !== null && age < ADULT_AGE; // needs a parent or guardian's approval
+  const isChild = age !== null && age < CHILD_AGE; // no phone number, no Google sign-in
+
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = setInterval(() => setResendCooldown((s) => Math.max(0, s - 1)), 1000);
@@ -55,7 +64,13 @@ function SignupForm() {
   function validate(): string | null {
     if (!fullName.trim()) return "Enter your full name.";
     if (!/^\S+@\S+\.\S+$/.test(email)) return "Enter a valid email address.";
-    if (!phone.trim()) return "Enter your phone number.";
+    if (!dobToIso(dob)) return "Choose your date of birth.";
+    if (role === "teacher" && isMinor) return "Teacher accounts are for people aged 18 or over.";
+    if (isMinor) {
+      const problem = guardianEmailProblem(guardianEmail, email);
+      if (problem) return problem;
+    }
+    if (!isMinor && !phone.trim()) return "Enter your phone number.";
     if (password.length < 8) return "Password must be at least 8 characters.";
     if (password !== confirm) return "Passwords do not match.";
     if (role === "student" && !grade.trim()) return "Enter your grade/class.";
@@ -138,7 +153,9 @@ function SignupForm() {
           code,
           password,
           fullName,
-          phone,
+          phone: isChild ? "" : phone,
+          dateOfBirth: dobToIso(dob),
+          guardianEmail: isMinor ? guardianEmail.trim() : "",
           role,
           grade,
           schoolName,
@@ -268,14 +285,17 @@ function SignupForm() {
 
       <Card>
         <div className="flex flex-col gap-4">
-          <GoogleButton
-            label="Continue with Google"
-            onError={setError}
-            disabled={loading}
-          />
-          <p className="-mt-2 text-center text-xs text-ink-faint">
-            Creates a student account. Teachers should sign up with email below.
-          </p>
+          {!isChild && (
+            <>
+              <GoogleButton label="Continue with Google" onError={setError} disabled={loading} />
+              <p className="-mt-2 text-center text-xs text-ink-faint">
+                Creates a student account. Teachers should sign up with email below.
+              </p>
+            </>
+          )}
+          {isChild && (
+            <p className="text-center text-xs text-ink-faint">Please sign up with an email address below.</p>
+          )}
           <div className="flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-ink-faint">
             <span className="h-px flex-1 bg-line" />
             or sign up with email
@@ -284,6 +304,8 @@ function SignupForm() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
+          <DateOfBirthField value={dob} onChange={setDob} disabled={loading} />
+
           <div className="grid grid-cols-2 gap-2">
             {(["student", "teacher"] as Role[]).map((r) => (
               <button
@@ -307,9 +329,30 @@ function SignupForm() {
           <Field label="Email">
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
           </Field>
-          <Field label="Phone number">
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07XX XXX XXX" />
-          </Field>
+          {!isChild && (
+            <Field label={isMinor ? "Phone number (optional)" : "Phone number"}>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07XX XXX XXX" />
+            </Field>
+          )}
+
+          {isMinor && role === "student" && (
+            <Field
+              label="Parent or guardian's email"
+              hint="We'll email them to ask for their permission before you can start. Please use their own email address."
+            >
+              <Input
+                type="email"
+                value={guardianEmail}
+                onChange={(e) => setGuardianEmail(e.target.value)}
+                placeholder="parent@example.com"
+              />
+            </Field>
+          )}
+          {isMinor && role === "teacher" && (
+            <p className="rounded-xl bg-warning-tint px-4 py-3 text-sm font-medium text-[var(--warning-text)]">
+              Teacher accounts are for people aged 18 or over.
+            </p>
+          )}
 
           {role === "student" ? (
             <>

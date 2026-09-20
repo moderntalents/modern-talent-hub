@@ -33,7 +33,15 @@ export default function PrivacyPolicyPage() {
       <H2>Information we collect</H2>
       <P><strong>Everyone who creates an account</strong></P>
       <UL>
-        <li>Your full name, email address, phone number and password (we cannot see your password; it is stored in a scrambled form).</li>
+        <li>
+          Your full name, email address and password (we cannot see your password; it is stored in a scrambled form). Adults
+          also give a phone number. Under-18s may give one if they wish, and we do not ask children under 13 for one.
+        </li>
+        <li>Your date of birth, so we know whether a parent or guardian needs to give permission.</li>
+        <li>
+          If you are under 18: your parent or guardian’s email address, and a record of whether they approved or declined
+          (see “Children”).
+        </li>
         <li>Whether you are a student, teacher or administrator.</li>
         <li>
           If you sign in with Google: the name, email address and profile details Google shares with us. We never receive
@@ -129,6 +137,16 @@ export default function PrivacyPolicyPage() {
       </P>
       <UL>
         <li>We collect only the information listed above and only what is needed to provide the service.</li>
+        <li>
+          We ask everyone for their date of birth. <strong>Anyone under 18 needs a parent or guardian’s permission.</strong>{" "}
+          We email the parent or guardian a link that explains what we collect, and the account cannot be used until they
+          choose Approve. If they decline, the account is removed. The link works for 7 days and can be sent again.
+        </li>
+        <li>
+          Children under 13 are not asked for a phone number and cannot sign up with Google. Teacher accounts are for people
+          aged 18 or over.
+        </li>
+        <li>People who already had an account when we introduced this are asked for their date of birth the next time they sign in.</li>
         <li>We show no advertising, we do not sell children’s information, and we do not track children for marketing.</li>
         <li>We do not collect a child’s location, contacts or advertising ID.</li>
         <li>Children cannot send private messages.</li>
@@ -138,9 +156,9 @@ export default function PrivacyPolicyPage() {
         </li>
         <li>
           <strong>Parents and guardians:</strong> you can ask us at any time to show you what we hold about your child, to correct it,
-          or to delete your child’s account and data — email us at{" "}
+          or to delete your child’s account and data, or to withdraw your permission — email us at{" "}
           <a href={`mailto:${CONTACT_EMAIL}`} className="font-semibold text-brand-cyan-deep">{CONTACT_EMAIL}</a> from the email
-          address on the account, or see “Deleting your account”. If you believe a child has given us information without
+          address on the account or the parent or guardian address we have on record, or see “Deleting your account”. If you believe a child has given us information without
           your permission, tell us and we will delete it.
         </li>
       </UL>
@@ -148,6 +166,10 @@ export default function PrivacyPolicyPage() {
       <H2>How long we keep information</H2>
       <UL>
         <li>Your account information and content are kept while your account exists and are deleted when you delete it.</li>
+        <li>
+          Your date of birth, and a parent or guardian’s email address and their answer, are kept only while your account
+          exists and are deleted with it.
+        </li>
         <li>
           Payment and payout records are kept for as long as tax and accounting law requires. When you delete your account,
           your name, email address, phone number and payout details (M-Pesa number or bank account) are removed from them.

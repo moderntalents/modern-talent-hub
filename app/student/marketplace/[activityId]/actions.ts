@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { arePaymentsEnabled } from "@/lib/settings";
+import { AGE_GATE_MESSAGE, isAgeCleared } from "@/lib/age-gate";
 
 /**
  * Free activities skip payment entirely and are activated immediately.
@@ -18,6 +19,7 @@ export async function enrolFree(activityId: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Sign in required.");
+  if (!(await isAgeCleared(user.id))) throw new Error(AGE_GATE_MESSAGE);
 
   const { data: activity, error: activityError } = await supabase
     .from("activities")

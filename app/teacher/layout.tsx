@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/nav/AppShell";
+import { requireAgeCleared } from "@/lib/age-gate";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 const NAV_ITEMS = [
@@ -18,6 +19,8 @@ export default async function TeacherLayout({ children }: { children: React.Reac
   // here covers every /teacher/* page at once; the create-lesson / create-activity
   // actions and a database trigger enforce the same rule for direct requests.
   const supabase = await createClient();
+  // Age check first (Stage 2): teacher accounts are for adults. Redirects if not cleared.
+  await requireAgeCleared(supabase, user, "teacher");
   const { data: teacherProfile } = await supabase
     .from("teacher_profiles")
     .select("approved")
