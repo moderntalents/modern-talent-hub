@@ -21,16 +21,16 @@ async function loadContext(sessionId: string) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { error: "Sign in required." } as const;
+  if (!user) return { ok: false, error: "Sign in required." } as const;
 
   const { data: profile } = await supabase.from("profiles").select("role, full_name").eq("id", user.id).single();
-  if (!profile) return { error: "Your profile couldn't be found." } as const;
+  if (!profile) return { ok: false, error: "Your profile couldn't be found." } as const;
 
   const admin = createAdminClient();
   const { data: session } = await admin.from("live_sessions").select("*").eq("id", sessionId).maybeSingle();
-  if (!session) return { error: "This live class no longer exists." } as const;
+  if (!session) return { ok: false, error: "This live class no longer exists." } as const;
 
-  return { admin, user, profile, session } as const;
+  return { ok: true, admin, user, profile, session } as const;
 }
 
 async function isApprovedTeacher(admin: ReturnType<typeof createAdminClient>, userId: string) {
@@ -72,7 +72,7 @@ function refresh() {
 export async function startLiveSession(sessionId: string): Promise<LiveActionResult> {
   try {
     const ctx = await loadContext(sessionId);
-    if ("error" in ctx) return fail(ctx.error);
+    if (!ctx.ok) return fail(ctx.error);
     const { admin, user, profile, session } = ctx;
 
     if (profile.role !== "teacher" || session.teacher_id !== user.id) {
@@ -108,7 +108,7 @@ export async function startLiveSession(sessionId: string): Promise<LiveActionRes
 export async function endLiveSession(sessionId: string): Promise<LiveActionResult> {
   try {
     const ctx = await loadContext(sessionId);
-    if ("error" in ctx) return fail(ctx.error);
+    if (!ctx.ok) return fail(ctx.error);
     const { admin, user, profile, session } = ctx;
 
     const isOwner = profile.role === "teacher" && session.teacher_id === user.id;
@@ -141,7 +141,7 @@ export async function endLiveSession(sessionId: string): Promise<LiveActionResul
 export async function joinLiveSession(sessionId: string): Promise<LiveActionResult> {
   try {
     const ctx = await loadContext(sessionId);
-    if ("error" in ctx) return fail(ctx.error);
+    if (!ctx.ok) return fail(ctx.error);
     const { admin, user, profile, session } = ctx;
 
     const state = effectiveLiveStatus(session);
@@ -190,7 +190,7 @@ export async function joinLiveSession(sessionId: string): Promise<LiveActionResu
 export async function removeLiveSession(sessionId: string): Promise<LiveActionResult> {
   try {
     const ctx = await loadContext(sessionId);
-    if ("error" in ctx) return fail(ctx.error);
+    if (!ctx.ok) return fail(ctx.error);
     const { admin, user, profile, session } = ctx;
 
     const isOwner = profile.role === "teacher" && session.teacher_id === user.id;
