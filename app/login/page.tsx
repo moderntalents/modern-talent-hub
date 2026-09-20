@@ -9,11 +9,9 @@ import { Card, Field, Input } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { friendlyAuthError, safeNextPath } from "@/lib/auth-errors";
-import { useIsNativeApp } from "@/lib/native";
 
 function LoginForm() {
   const router = useRouter();
-  const inApp = useIsNativeApp();
   const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -74,19 +72,16 @@ function LoginForm() {
       </div>
 
       <Card>
-        {/* Google sign-in can't run inside the Android app, so the whole Google block is hidden there. */}
-        {!inApp && (
-          <div className="flex flex-col gap-4">
-            <GoogleButton label="Continue with Google" onError={setError} disabled={loading} />
-            <div className="flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-ink-faint">
-              <span className="h-px flex-1 bg-line" />
-              or log in with email
-              <span className="h-px flex-1 bg-line" />
-            </div>
+        <div className="flex flex-col gap-4">
+          <GoogleButton label="Continue with Google" onError={setError} disabled={loading} />
+          <div className="flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-ink-faint">
+            <span className="h-px flex-1 bg-line" />
+            or log in with email
+            <span className="h-px flex-1 bg-line" />
           </div>
-        )}
+        </div>
 
-        <form onSubmit={handleSubmit} className={`${inApp ? "" : "mt-4 "}flex flex-col gap-4`}>
+        <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
           <Field label="Email">
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoFocus />
           </Field>

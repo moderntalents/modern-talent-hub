@@ -22,6 +22,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Google sign-in return: after the phone's browser finishes Google login,
+                 Supabase redirects to com.moderntalentshub.app://auth-callback?code=…
+                 and Android opens THIS app with that link. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.moderntalentshub.app" android:host="auth-callback" />
+            </intent-filter>
+
         </activity>
 
         <provider

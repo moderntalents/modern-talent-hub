@@ -340,17 +340,31 @@ YouTube, PDFs, live classes, admin, Supabase — works exactly as on the web. No
 bar, notch and gesture bar (`--inset-*`), which is **0 on a normal browser**, so the site looks
 identical; it only takes effect inside the app.
 
-**Google Sign-In is hidden inside the app.** Google refuses to show its login page in an app's
-built-in browser, so the button (and only the button) is hidden when the page detects the app
-(`lib/native.ts`, user-agent suffix `MTHApp`). Email + password, the 5-digit code and forgot password
-all work in the app. A future update could open Google login in the phone's browser.
+**Google Sign-In (website and app).** Google refuses to show its login page inside an app's built-in
+browser, so the app never uses one. On the website the button works as always (`/auth/callback`). In
+the app the same button opens Google in the phone's **real browser (Chrome Custom Tab)**; when the
+user finishes, Supabase redirects to the deep link `com.moderntalentshub.app://auth-callback?code=…`,
+Android reopens the app, and the app finishes the login with the same Supabase session
+(`lib/native-google.ts`, `components/auth/NativeAuthListener.tsx`, `lib/native-auth.ts`). It is the
+same Supabase Auth — no separate system; the PKCE code verifier stays inside the app, so an
+intercepted link alone can't sign anyone in. Dashboard setup (required for both, none is in code):
+
+| Where | Setting | Value |
+|---|---|---|
+| Supabase → Authentication → Providers → Google | Enable + Client ID + Client Secret | from Google Cloud (below) |
+| Supabase → Authentication → URL Configuration | Site URL | `https://www.rutechbranding.ink` |
+| Supabase → … → Redirect URLs | add all three | `https://www.rutechbranding.ink/auth/callback`, `https://rutechbranding.ink/auth/callback`, `com.moderntalentshub.app://auth-callback` |
+| Google Cloud → Credentials → OAuth client (Web application) | Authorized redirect URI (the only one) | `https://<your-supabase-ref>.supabase.co/auth/v1/callback` |
+| Google Cloud → OAuth consent screen | Publishing status | **In production** (otherwise only listed test users can sign in) |
+
+No separate Android OAuth client or SHA-1 fingerprint is needed: Google only ever talks to Supabase.
 
 ### Test it on your phone (no Android Studio needed)
 1. GitHub → **Actions** → **Android debug APK** → **Run workflow** (branch `android-app`).
 2. When it turns green, open the run and download **modern-talent-hub-debug-apk** (Artifacts).
 3. Unzip it, send `app-debug.apk` to your phone (USB, WhatsApp, Drive, email).
 4. On the phone open the file; allow **Install unknown apps** for that app when asked; install.
-5. Open **Modern Talent Hub**. Sign in, and try a lesson, the menu, and (live class) camera/microphone.
+5. Open **Modern Talent Hub**. Sign in (email, or Google once it is set up), and try a lesson, the menu, and (live class) camera/microphone.
 
 Using Android Studio instead: install it, open the `android/` folder, wait for Gradle sync, turn on
 **Developer options → USB debugging** on the phone, connect it, press **Run ▶**.

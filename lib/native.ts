@@ -1,17 +1,6 @@
-"use client";
-
-import { useSyncExternalStore } from "react";
-
-// The Android app (Capacitor) adds "MTHApp" to the browser identity — see
-// `android.appendUserAgent` in capacitor.config.ts. Everywhere else (websites,
-// desktop, phone browsers) this is false and nothing changes.
-//
-// useSyncExternalStore keeps the first render identical to the server's (false)
-// and only switches after the page is live, so there's no hydration mismatch.
-export function useIsNativeApp(): boolean {
-  return useSyncExternalStore(
-    () => () => {},
-    () => navigator.userAgent.includes("MTHApp"),
-    () => false,
-  );
+// True only inside the Android app. The app adds "MTHApp" to the browser identity
+// (`android.appendUserAgent` in capacitor.config.ts); websites, desktop and phone
+// browsers never do, so on the web this is always false and nothing changes.
+export function isNativeApp(): boolean {
+  return typeof navigator !== "undefined" && navigator.userAgent.includes("MTHApp");
 }

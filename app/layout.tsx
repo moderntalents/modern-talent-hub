@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, DM_Sans, DM_Mono } from "next/font/google";
 import { RegisterServiceWorker } from "@/components/RegisterServiceWorker";
+import { NativeAuthListener } from "@/components/auth/NativeAuthListener";
 import "./globals.css";
 
 const archivo = Archivo({
@@ -46,6 +47,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col bg-paper text-ink">
         {children}
         <RegisterServiceWorker />
+        {/* Android app only: finishes Google sign-in when the phone's browser returns to the app. */}
+        <NativeAuthListener />
       </body>
     </html>
   );

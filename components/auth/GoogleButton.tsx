@@ -4,7 +4,8 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { friendlyAuthError } from "@/lib/auth-errors";
-import { useIsNativeApp } from "@/lib/native";
+import { isNativeApp } from "@/lib/native";
+import { startNativeGoogleSignIn } from "@/lib/native-google";
 
 function GoogleIcon() {
   return (
@@ -63,9 +64,6 @@ export function GoogleButton({
   onError?: (message: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
-  // Google refuses to show its sign-in inside an app's built-in browser, so the
-  // button is hidden in the Android app (email + password still works there).
-  const inApp = useIsNativeApp();
 
   async function handleClick() {
     setLoading(true);
@@ -75,6 +73,20 @@ export function GoogleButton({
       if (await isGoogleDisabled()) {
         console.error("[GoogleButton] Google provider is not enabled in the Supabase dashboard.");
         onError?.(friendlyAuthError("Unsupported provider: provider is not enabled"));
+        setLoading(false);
+        return;
+      }
+
+      // Android app: Google refuses to run inside the app's embedded web view, so
+      // sign-in opens in the phone's real browser (Chrome Custom Tab) and returns
+      // to the app by deep link — see lib/native-google.ts. The website never
+      // takes this branch.
+      if (isNativeApp()) {
+        const result = await startNativeGoogleSignIn();
+        if (result.error) {
+          console.error("[GoogleButton] native Google sign-in failed:", result.error);
+          onError?.(friendlyAuthError(result.error));
+        }
         setLoading(false);
         return;
       }
@@ -105,8 +117,6 @@ export function GoogleButton({
       setLoading(false);
     }
   }
-
-  if (inApp) return null;
 
   return (
     <Button
