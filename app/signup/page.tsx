@@ -17,13 +17,13 @@ type Stage = "form" | "verify";
 // (issue_registration_code in migration 0005); the button mirrors that.
 const RESEND_COOLDOWN_SECONDS = 60;
 
-// Where a brand-new account lands. Coaches go to the activation page: with
-// payments ON it shows the fee + M-Pesa prompt; with payments OFF it activates
-// them for free and forwards to the dashboard. Students go straight to theirs.
-// The role can come from user metadata, so anything but "teacher" is treated
-// as a student rather than trusted as a URL segment.
+// Where a brand-new account lands once its email is verified. Students go
+// straight to their dashboard and can use it immediately. Teachers land on
+// /teacher, which shows "pending approval" until an admin approves them (then
+// the usual activation step applies). The role can come from user metadata, so
+// anything but "teacher" is treated as a student rather than trusted as a URL segment.
 function postSignupPath(role: unknown): string {
-  return role === "teacher" ? "/teacher/activate" : "/student";
+  return role === "teacher" ? "/teacher" : "/student";
 }
 
 function SignupForm() {

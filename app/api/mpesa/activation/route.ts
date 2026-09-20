@@ -46,12 +46,19 @@ export async function POST(request: Request) {
 
   const { data: coach } = await supabase
     .from("teacher_profiles")
-    .select("activated")
+    .select("activated, approved")
     .eq("profile_id", user.id)
     .maybeSingle();
 
   if (!coach) {
     return NextResponse.json({ error: "Only coach accounts pay the activation fee." }, { status: 403 });
+  }
+  // Order is: admin approves the teacher first, then they activate.
+  if (!coach.approved) {
+    return NextResponse.json(
+      { error: "Your teacher account must be approved by an admin before you can activate it." },
+      { status: 403 },
+    );
   }
   if (coach.activated) {
     return NextResponse.json({ error: "Your account is already activated." }, { status: 409 });

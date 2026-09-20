@@ -15,7 +15,7 @@ longer the live app.
 |---|---|
 | Framework | Next.js 16 (App Router, Server Components + Server Actions), TypeScript |
 | Styling | Tailwind CSS v4, brand tokens ported 1:1 from the original prototype |
-| Auth | Supabase Auth — email + password with a 5-digit emailed verification code (custom, see setup step 1; no admin approval needed for signup), Google OAuth. Role stored on `profiles.role` |
+| Auth | Supabase Auth — email + password with a 5-digit emailed verification code (custom, see setup step 1; students need no approval, teachers wait for admin approval), Google OAuth. Role stored on `profiles.role` |
 | Database | Supabase Postgres, full schema + Row Level Security in `supabase/migrations/0001_init.sql` |
 | File storage | Supabase Storage (private buckets, signed URLs) |
 | Payments | Safaricom Daraja API (M-Pesa STK Push), real HTTP calls — no simulated success |
@@ -53,6 +53,7 @@ supabase/
   migrations/0003_payments_toggle.sql       global payments on/off switch
   migrations/0004_lock_down_roles.sql       blocks self-promotion to admin (signup + update)
   migrations/0005_registration_codes.sql    5-digit registration code storage + rate limits
+  migrations/0006_teacher_approval_enforcement.sql  unapproved teachers can't write lessons/activities
   seed.sql                  CBC subjects seed data
 legacy-prototype/           the original static clickable prototype (archived)
 capacitor.config.ts         Android packaging config (see section 5)
@@ -63,8 +64,21 @@ capacitor.config.ts         Android packaging config (see section 5)
 Supabase Auth exists on a fresh project, but **the app's tables and functions do not**. On an
 empty project, open the Supabase **SQL Editor** for the *same project whose URL is
 `NEXT_PUBLIC_SUPABASE_URL` in Vercel*, paste all of [`supabase/setup-all.sql`](supabase/setup-all.sql)
-and run it **once**. (It is `0001`→`0005` + the seed, in order.) Signs of a missing setup: login
+and run it **once**. (It is `0001`→`0006` + the seed, in order.) Signs of a missing setup: login
 loops back to `/login`, registration/password-reset return "database setup is incomplete".
+
+## Who needs approval
+
+- **Students:** none. After entering the 5-digit code the account exists, is confirmed, and the
+  student is signed in and can use the app immediately (Google sign-in also creates students).
+- **Teachers:** register and verify their email the same way, can log in, but stay **pending**
+  (`teacher_profiles.approved = false`) and see only a "pending approval" screen until an admin
+  clicks **Approve** at **Admin → Teachers**. Enforced in three layers: the teacher layout hides
+  every `/teacher/*` page, the create-lesson / create-activity actions and activation payment refuse,
+  and migration `0006` blocks unapproved teachers from writing lessons/activities even via the API.
+  Revoking approval sends the teacher back to pending immediately. The activation-fee step (when
+  payments are ON) comes **after** approval.
+- **Admins:** unchanged; created only with SQL (see below).
 
 ## Password reset ("Forgot your password?")
 
