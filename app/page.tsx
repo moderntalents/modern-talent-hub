@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LinkButton } from "@/components/ui/Button";
 import { getSessionProfile } from "@/lib/auth";
@@ -29,6 +30,15 @@ export default async function SplashPage() {
           I already have an account
         </LinkButton>
       </div>
+      <p className="text-xs text-ink-faint">
+        <Link href="/privacy" className="font-semibold text-brand-cyan-deep">
+          Privacy Policy
+        </Link>
+        {" · "}
+        <Link href="/delete-account" className="font-semibold text-brand-cyan-deep">
+          Delete your account
+        </Link>
+      </p>
     </main>
   );
 }

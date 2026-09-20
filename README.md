@@ -91,6 +91,27 @@ activity "is live" simply because it has one, so existing lessons/activities are
   `AndroidManifest.xml` — test joining a class on a real Android phone (WebView behaviour varies).
 - Times are shown in East Africa Time.
 
+## Privacy policy and account deletion (Google Play requirements)
+
+- **Public pages** (no login): `/privacy` (Privacy Policy), `/delete-account` (how to delete + what is
+  kept — this is the "web link" Google Play asks for), `/account-deleted`. Linked from the home, login
+  and signup pages and from the account page. Wording/dates/contact live in `lib/legal.ts`
+  (contact `moderntalentshub@gmail.com`, email requests completed within 14 days).
+- **In-app deletion:** signed-in students and teachers open **Account & privacy** (menu, next to Sign
+  out) → `/account` → **Delete my account** → type `DELETE`. It lives outside `/teacher` on purpose, so a
+  teacher awaiting approval can still delete their account. Admins can't self-delete.
+- **What deletion does** (`app/account/actions.ts`): removes the login and everything tied to it. A
+  teacher's *published* lessons stay, ownerless (the database sets `lessons.teacher_id` to NULL); their
+  activities and draft lessons, and all their files, are deleted. Teachers with wallet money or a pending
+  withdrawal are asked to settle first. If the person has any payment/payout record (those rows reference
+  the user and should be kept), the account is **scrubbed** instead — details blanked, email replaced,
+  login disabled — and the anonymous ledger stays. Known gap: for a Google-signed-in person on that
+  scrub path, the Google name/email copy inside Supabase's `auth.identities` is not cleared (fixing it
+  needs a small database function); it doesn't apply while payments are off.
+- **Not done yet (Stage 2/3):** age screen, parental consent and child-account restrictions for the
+  mixed audience; the Privacy Policy's "Children" section describes today's behaviour and must be
+  updated when those exist.
+
 ## Who needs approval
 
 - **Students:** none. After entering the 5-digit code the account exists, is confirmed, and the
