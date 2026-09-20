@@ -67,9 +67,15 @@ export function AppShell({
             );
           })}
         </nav>
+        <Link
+          href="/account"
+          className="mt-4 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2"
+        >
+          Account &amp; privacy
+        </Link>
         <button
           onClick={signOut}
-          className="mt-4 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-brand-red-deep hover:bg-surface-2"
+          className="mt-1 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-brand-red-deep hover:bg-surface-2"
         >
           Sign out
         </button>
@@ -88,9 +94,14 @@ export function AppShell({
             />
             <p className="text-sm font-semibold">{userName}</p>
           </div>
-          <button onClick={signOut} className="text-xs font-semibold text-brand-red-deep">
-            Sign out
-          </button>
+          <div className="flex items-center gap-4">
+            <Link href="/account" className="text-xs font-semibold text-ink-soft">
+              Account
+            </Link>
+            <button onClick={signOut} className="text-xs font-semibold text-brand-red-deep">
+              Sign out
+            </button>
+          </div>
         </header>
 
         <main className="flex-1 p-4 pb-[calc(6rem+var(--inset-bottom))] md:p-8 md:pb-8">{children}</main>

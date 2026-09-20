@@ -352,6 +352,16 @@ function SignupForm() {
           Log in
         </Link>
       </p>
+
+      <p className="text-center text-xs text-ink-faint">
+        <Link href="/privacy" className="font-semibold text-brand-cyan-deep">
+          Privacy Policy
+        </Link>
+        {" · "}
+        <Link href="/delete-account" className="font-semibold text-brand-cyan-deep">
+          Delete your account
+        </Link>
+      </p>
     </main>
   );
 }

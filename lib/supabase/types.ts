@@ -568,6 +568,11 @@ export interface Database {
         Args: { p_email: string; p_code_hash: string };
         Returns: "ok" | "invalid" | "expired" | "locked" | "none";
       };
+      // Server-only, from 0009_delete_user_identities.sql (account deletion).
+      delete_user_identities: {
+        Args: { p_user_id: string };
+        Returns: undefined;
+      };
     };
   };
 }
