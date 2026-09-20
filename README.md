@@ -86,9 +86,9 @@ activity "is live" simply because it has one, so existing lessons/activities are
 - **Permissions:** only approved teachers create/start/end their own classes; students join a live *lesson*
   if it's published and a live *activity* if they're enrolled; admins can end or remove any class at
   **Admin → Live**. Clients cannot write live tables (read-only RLS); every change goes through server code.
-- **Mobile / Android:** works in mobile browsers. The Play Store app is a Capacitor WebView, so when you
-  run `npx cap add android`, add `CAMERA`, `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS` and `INTERNET` to
-  `AndroidManifest.xml`, then test joining on a real Android phone (WebView permission behaviour varies).
+- **Mobile / Android:** works in mobile browsers and in the Android app (see section 5). The app is a Capacitor
+  WebView; the `CAMERA`, `RECORD_AUDIO` and `MODIFY_AUDIO_SETTINGS` permissions are already declared in
+  `AndroidManifest.xml` — test joining a class on a real Android phone (WebView behaviour varies).
 - Times are shown in East Africa Time.
 
 ## Who needs approval
@@ -319,36 +319,56 @@ Note: `proxy.ts`, Server Actions and the two `/api/mpesa` and `/api/withdrawals`
 all require the Node.js runtime features Vercel provides out of the box — no extra
 configuration needed beyond the environment variables above.
 
-## 5. Packaging for Android (Google Play)
+## 5. Android app (Google Play)
 
-The app is wrapped with [Capacitor](https://capacitorjs.com) (`@capacitor/core`,
-`@capacitor/cli`, `@capacitor/android` are already installed as dev dependencies, and
-`capacitor.config.ts` is committed) as a **WebView shell that loads your live Vercel
-deployment** — the same approach as many hybrid apps — rather than bundling the site inside
-the APK, so the installed app always reflects your latest deploy. Steps this environment
-cannot perform for you (no Android SDK/Studio, and Google account creation is something only
-you can do):
+The Android app is prepared in [`android/`](android/) with [Capacitor](https://capacitorjs.com). It is
+a **native shell that loads the live website** (`https://www.rutechbranding.ink`), so the app always
+shows the current site and every feature — login, 5-digit verification, forgot password, lessons,
+YouTube, PDFs, live classes, admin, Supabase — works exactly as on the web. Nothing was rebuilt.
 
-1. Set `capacitor.config.ts`'s `server.url` (or the `NEXT_PUBLIC_APP_URL` env var it reads)
-   to your real production URL, then run:
-   ```bash
-   npx cap add android
-   npx cap sync android
-   ```
-2. Install [Android Studio](https://developer.android.com/studio), open the generated
-   `android/` folder, and let it finish Gradle sync.
-3. Generate a signing keystore (`keytool -genkey -v -keystore mth-release.keystore ...`) —
-   **keep this file and its password safe**; you'll need the exact same one for every future
-   Play Store update.
-4. Build a release AAB: in Android Studio, **Build → Generate Signed Bundle / APK → Android
-   App Bundle**, selecting your keystore.
-5. Create a [Google Play Console](https://play.google.com/console) developer account
-   (one-time USD 25 registration fee, identity verification required — this has to be you).
-6. In Play Console: create the app listing, fill in the **Data safety** form honestly (this
-   app collects account info, and payment/financial data via M-Pesa), set a content rating,
-   upload a privacy policy URL (required — write one covering what student/teacher data you
-   store and how M-Pesa payment data flows through Safaricom), upload the signed AAB to a
-   testing or production track, and submit for review.
+| Setting | Value |
+|---|---|
+| App name | Modern Talent Hub |
+| Package / application ID | `com.moderntalentshub.app` (**permanent** once published) |
+| Icon / splash | the real logo, generated from `public/icons/logo-source.png` |
+| Loads | `capacitor.config.ts` → `server.url` (override with `CAPACITOR_SERVER_URL`) |
+| Offline | a friendly "You're offline" page (`mobile/www/offline.html`) |
+| Permissions | internet, camera, microphone (live classes; asked when a class is joined) |
+| Min / target Android | 7.0 (API 24) / Android 16 (API 36) |
 
-None of step 5–6 can be done on your behalf — they require your own Google identity and
-payment method by Google's policy.
+**Phone layout.** The website is already mobile-first. `app/globals.css` adds spacing for the status
+bar, notch and gesture bar (`--inset-*`), which is **0 on a normal browser**, so the site looks
+identical; it only takes effect inside the app.
+
+**Google Sign-In is hidden inside the app.** Google refuses to show its login page in an app's
+built-in browser, so the button (and only the button) is hidden when the page detects the app
+(`lib/native.ts`, user-agent suffix `MTHApp`). Email + password, the 5-digit code and forgot password
+all work in the app. A future update could open Google login in the phone's browser.
+
+### Test it on your phone (no Android Studio needed)
+1. GitHub → **Actions** → **Android debug APK** → **Run workflow** (branch `android-app`).
+2. When it turns green, open the run and download **modern-talent-hub-debug-apk** (Artifacts).
+3. Unzip it, send `app-debug.apk` to your phone (USB, WhatsApp, Drive, email).
+4. On the phone open the file; allow **Install unknown apps** for that app when asked; install.
+5. Open **Modern Talent Hub**. Sign in, and try a lesson, the menu, and (live class) camera/microphone.
+
+Using Android Studio instead: install it, open the `android/` folder, wait for Gradle sync, turn on
+**Developer options → USB debugging** on the phone, connect it, press **Run ▶**.
+
+### After changing the config or logo
+```bash
+npm run cap:sync      # copies capacitor.config.ts into the Android project
+```
+Regenerate icons/splash by re-running the image script if the logo changes.
+
+### Publishing to Google Play (NOT done yet)
+The debug APK is only for testing. To publish you need, all of which have to be you:
+1. A [Google Play Console](https://play.google.com/console) developer account (one-time fee, identity check).
+2. A **signing keystore** (`keytool -genkey -v -keystore mth-release.keystore -alias mth -keyalg RSA -keysize 2048 -validity 10000`) — **keep it and its password safe forever**; every future update needs the same one.
+3. A signed release **AAB**: Android Studio → Build → Generate Signed Bundle / APK → Android App Bundle.
+4. In Play Console: store listing (512×512 icon = `public/icons/icon-512.png`, 1024×500 feature graphic,
+   phone screenshots), **privacy policy URL** (required — must cover student/teacher data, email codes,
+   and M-Pesa payments), **Data safety** form, content rating, target audience (children need extra care —
+   see Google's Families policy), then a testing track before production.
+5. Google's *minimum functionality* policy can reject apps that are only a website wrapper; describe the
+   real features (live classes, lessons, teacher/student accounts) and expect possible review feedback.

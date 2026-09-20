@@ -1,23 +1,41 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
-// Wraps the deployed Vercel app in a native Android (and iOS, if ever needed)
-// shell for Play Store distribution. This does NOT bundle the web app inside
-// the APK/AAB — `server.url` points the WebView at your live production
-// deployment, so the installed app always shows the current site (same
-// approach as Twitter/Instagram's early hybrid apps). See README.md ->
-// "Packaging for Android / Google Play" for the full setup steps, which
-// require Android Studio and a Google Play Console account — neither of
-// which this environment has, so `npx cap add android` has not been run here.
+// Wraps the live Modern Talent Hub website in a native Android shell for Google
+// Play. The app does NOT bundle the web app: `server.url` points its WebView at
+// the production site, so the installed app always shows the current version and
+// every existing feature (login, 5-digit verification, forgot password, lessons,
+// YouTube, PDFs, admin, live classes, Supabase) works exactly as on the web.
+//
+// Build/test steps: README.md -> "Android app (Google Play)".
+
+// The site's final address. rutechbranding.ink redirects to www, and Capacitor treats
+// a redirect to another host as "leaving the app" (it would open the phone's browser),
+// so the app is pointed at the www address directly.
+const SITE_URL = process.env.CAPACITOR_SERVER_URL || "https://www.rutechbranding.ink";
+
 const config: CapacitorConfig = {
-  appId: "com.moderntalenthub.app",
+  // Permanent once the app is on Google Play — do not change after publishing.
+  appId: "com.moderntalentshub.app",
   appName: "Modern Talent Hub",
-  webDir: "public",
+
+  // Tiny local folder (offline page + a forwarding index.html); see mobile/www.
+  webDir: "mobile/www",
+
   server: {
-    url: process.env.NEXT_PUBLIC_APP_URL || "https://your-deployment.vercel.app",
+    url: SITE_URL,
     cleartext: false,
+    // Pages on these hosts stay inside the app; anything else opens in the browser.
+    allowNavigation: ["www.rutechbranding.ink", "rutechbranding.ink"],
+    // Shown if the phone has no internet / the site can't be reached.
+    errorPath: "offline.html",
   },
+
   android: {
     allowMixedContent: false,
+    backgroundColor: "#ebf1f6",
+    // Lets the website know it is inside the app (e.g. to hide Google sign-in,
+    // which Google refuses to run inside an app WebView).
+    appendUserAgent: "MTHApp",
   },
 };
 

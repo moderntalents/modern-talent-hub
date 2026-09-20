@@ -77,7 +77,7 @@ export function AppShell({
 
       <div className="flex min-h-screen flex-1 flex-col">
         {/* Mobile top bar */}
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-3 md:hidden">
+        <header className="sticky top-[var(--inset-top)] z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-3 md:hidden">
           <div className="flex items-center gap-2">
             <Image
               src="/icons/logo-mark.png"
@@ -93,10 +93,10 @@ export function AppShell({
           </button>
         </header>
 
-        <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8">{children}</main>
+        <main className="flex-1 p-4 pb-[calc(6rem+var(--inset-bottom))] md:p-8 md:pb-8">{children}</main>
 
         {/* Mobile bottom tabs */}
-        <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-line bg-surface md:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-line bg-surface pb-[var(--inset-bottom)] md:hidden">
           {navItems.map((item) => {
             const active = pathname === item.href;
             return (

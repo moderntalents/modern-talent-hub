@@ -9,6 +9,7 @@ import { Card, Field, Input } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { friendlyAuthError } from "@/lib/auth-errors";
+import { useIsNativeApp } from "@/lib/native";
 
 type Role = "student" | "teacher";
 type Stage = "form" | "verify";
@@ -28,6 +29,7 @@ function postSignupPath(role: unknown): string {
 
 function SignupForm() {
   const router = useRouter();
+  const inApp = useIsNativeApp();
   const [stage, setStage] = useState<Stage>("form");
   const [role, setRole] = useState<Role>("student");
   const [fullName, setFullName] = useState("");
@@ -267,23 +269,26 @@ function SignupForm() {
       </div>
 
       <Card>
-        <div className="flex flex-col gap-4">
-          <GoogleButton
-            label="Continue with Google"
-            onError={setError}
-            disabled={loading}
-          />
-          <p className="-mt-2 text-center text-xs text-ink-faint">
-            Creates a student account. Teachers should sign up with email below.
-          </p>
-          <div className="flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-ink-faint">
-            <span className="h-px flex-1 bg-line" />
-            or sign up with email
-            <span className="h-px flex-1 bg-line" />
+        {/* Google sign-in can't run inside the Android app, so the whole Google block is hidden there. */}
+        {!inApp && (
+          <div className="flex flex-col gap-4">
+            <GoogleButton
+              label="Continue with Google"
+              onError={setError}
+              disabled={loading}
+            />
+            <p className="-mt-2 text-center text-xs text-ink-faint">
+              Creates a student account. Teachers should sign up with email below.
+            </p>
+            <div className="flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-ink-faint">
+              <span className="h-px flex-1 bg-line" />
+              or sign up with email
+              <span className="h-px flex-1 bg-line" />
+            </div>
           </div>
-        </div>
+        )}
 
-        <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className={`${inApp ? "" : "mt-4 "}flex flex-col gap-4`}>
           <div className="grid grid-cols-2 gap-2">
             {(["student", "teacher"] as Role[]).map((r) => (
               <button

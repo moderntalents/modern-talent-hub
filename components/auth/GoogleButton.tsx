@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { friendlyAuthError } from "@/lib/auth-errors";
+import { useIsNativeApp } from "@/lib/native";
 
 function GoogleIcon() {
   return (
@@ -62,6 +63,9 @@ export function GoogleButton({
   onError?: (message: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
+  // Google refuses to show its sign-in inside an app's built-in browser, so the
+  // button is hidden in the Android app (email + password still works there).
+  const inApp = useIsNativeApp();
 
   async function handleClick() {
     setLoading(true);
@@ -101,6 +105,8 @@ export function GoogleButton({
       setLoading(false);
     }
   }
+
+  if (inApp) return null;
 
   return (
     <Button

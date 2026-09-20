@@ -7,7 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cap:sync": "cap sync android",
+    "android:open": "cap open android"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

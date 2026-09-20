@@ -62,6 +62,37 @@
   }
 }
 
+/* Phone screen edges (status bar, camera notch, gesture bar). Inside the Android
+   app the screen is drawn edge-to-edge, and the app reports these sizes: through
+   env() (a real browser/PWA) and through --safe-area-inset-* (which Capacitor sets
+   from the native side). In a normal desktop or mobile browser both are 0, so this
+   changes nothing on the website itself. */
+:root {
+  --inset-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --inset-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --inset-left: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
+  --inset-right: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+}
+
+body {
+  padding-top: var(--inset-top);
+  padding-left: var(--inset-left);
+  padding-right: var(--inset-right);
+}
+
+/* A solid band behind the status bar, so scrolling content never shows through it. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--inset-top);
+  background: var(--surface);
+  z-index: 60;
+  pointer-events: none;
+}
+
 @theme inline {
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);

@@ -1,0 +1,59 @@
+name: Android debug APK
+
+# Builds an installable TEST version of the Android app (a "debug" APK) so it can be
+# tried on a phone without installing Android Studio. Not for Google Play: the Play
+# Store needs a signed release bundle (see README -> "Android app (Google Play)").
+#
+# Run it: GitHub -> Actions -> "Android debug APK" -> Run workflow, then download
+# "modern-talent-hub-debug-apk" from the finished run's Artifacts.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [android-app]
+    paths:
+      - "android/**"
+      - "capacitor.config.ts"
+      - "mobile/**"
+      - ".github/workflows/android-debug-apk.yml"
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Capacitor 8 needs Java 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      # `npm install` (not `npm ci`): the Android build only needs the Capacitor
+      # packages, and this keeps the job independent of the web app's lockfile.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --ignore-scripts
+
+      - name: Sync Capacitor into the Android project
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: modern-talent-hub-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
