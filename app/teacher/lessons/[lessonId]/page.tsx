@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
 import { getSignedUrl } from "@/lib/storage";
 import { Badge } from "@/components/ui/Card";
+import { TeacherLivePanel } from "@/components/live/TeacherLivePanel";
+import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
+import { getParticipantRows } from "@/lib/live/queries";
 import { MaterialsManager } from "./MaterialsManager";
 import { PublishToggle } from "./PublishToggle";
 import { CreateAssignmentForm, SubmissionsList, type SubmissionRow } from "./AssignmentPanel";
@@ -20,6 +23,10 @@ export default async function TeacherLessonPage({ params }: { params: Promise<{ 
     .single();
 
   if (!lesson) notFound();
+
+  // A lesson is "live" when it has a live session (created from the New lesson form).
+  const { data: live } = await supabase.from("live_sessions").select("*").eq("lesson_id", lessonId).maybeSingle();
+  const participants = live ? await getParticipantRows(live.id) : [];
 
   const [{ data: materials }, { data: assignment }] = await Promise.all([
     supabase.from("lesson_materials").select("*").eq("lesson_id", lessonId),
@@ -57,6 +64,17 @@ export default async function TeacherLessonPage({ params }: { params: Promise<{ 
         </div>
         <PublishToggle lessonId={lesson.id} status={lesson.status} />
       </div>
+
+      {live && (
+        <TeacherLivePanel
+          sessionId={live.id}
+          status={effectiveLiveStatus(live)}
+          scheduledLabel={formatSchedule(live.scheduled_at)}
+          durationMinutes={live.duration_minutes}
+          participants={participants}
+          noun="lesson"
+        />
+      )}
 
       <div>
         <h2 className="mb-2 font-head text-sm font-bold uppercase tracking-wide text-ink-faint">Materials</h2>

@@ -4,6 +4,8 @@ import { getSessionProfile } from "@/lib/auth";
 import { getSignedUrl } from "@/lib/storage";
 import { humanFileSize } from "@/lib/format";
 import { getVideoSource } from "@/lib/video";
+import { StudentLiveCard } from "@/components/live/StudentLiveCard";
+import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
 import { isVideoFile } from "@/lib/uploads";
 import { Card } from "@/components/ui/Card";
 import { AssignmentSubmitForm } from "./AssignmentSubmitForm";
@@ -43,6 +45,10 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
   // plays in a <video>. Uploaded video files play inline; everything else is a
   // download.
   const lessonVideo = getVideoSource(lesson.video_url);
+
+  // Live class attached to this lesson, if the teacher scheduled one. A
+  // tolerant query: if it fails the lesson simply shows as a normal lesson.
+  const { data: live } = await supabase.from("live_sessions").select("*").eq("lesson_id", lessonId).maybeSingle();
   const videoMaterials = materialLinks.filter((m) => isVideoFile(m.file_type, m.file_name));
   const otherMaterials = materialLinks.filter((m) => !isVideoFile(m.file_type, m.file_name));
 
@@ -55,6 +61,16 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
         <h1 className="font-head text-xl font-extrabold">{lesson.title}</h1>
         {lesson.description && <p className="mt-1 text-sm text-ink-soft">{lesson.description}</p>}
       </div>
+
+      {live && (
+        <StudentLiveCard
+          sessionId={live.id}
+          status={effectiveLiveStatus(live)}
+          scheduledLabel={formatSchedule(live.scheduled_at)}
+          durationMinutes={live.duration_minutes}
+          noun="lesson"
+        />
+      )}
 
       {lessonVideo && (
         <div className="overflow-hidden rounded-[var(--radius-brand)] border border-line bg-black">

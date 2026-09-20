@@ -4,6 +4,8 @@ import { getSessionProfile } from "@/lib/auth";
 import { getSignedUrl } from "@/lib/storage";
 import { arePaymentsEnabled } from "@/lib/settings";
 import { isVideoFile } from "@/lib/uploads";
+import { StudentLiveCard } from "@/components/live/StudentLiveCard";
+import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
 import { BILLING_LABELS, formatKes } from "@/lib/constants";
 import { Card, Badge } from "@/components/ui/Card";
 import { SubscribeForm } from "./SubscribeForm";
@@ -38,6 +40,11 @@ export default async function ActivityDetailPage({
     (materials ?? []).map(async (m) => ({ ...m, url: await getSignedUrl("activity-materials", m.storage_path) })),
   );
 
+  // Live class attached to this activity, if the teacher scheduled one. A
+  // tolerant query: if it fails the activity simply shows as a regular activity.
+  const { data: live } = await supabase.from("live_sessions").select("*").eq("activity_id", activityId).maybeSingle();
+  const enrolled = subscription?.status === "active";
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -71,6 +78,17 @@ export default async function ActivityDetailPage({
           />
         </div>
       </Card>
+
+      {live && (
+        <StudentLiveCard
+          sessionId={live.id}
+          status={effectiveLiveStatus(live)}
+          scheduledLabel={formatSchedule(live.scheduled_at)}
+          durationMinutes={live.duration_minutes}
+          noun="activity"
+          joinBlockedReason={enrolled ? undefined : "Enrol in this activity above to join its live class."}
+        />
+      )}
 
       {materialLinks.length > 0 && (
         <div>

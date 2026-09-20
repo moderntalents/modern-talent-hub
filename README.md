@@ -55,6 +55,7 @@ supabase/
   migrations/0005_registration_codes.sql    5-digit registration code storage + rate limits
   migrations/0006_teacher_approval_enforcement.sql  unapproved teachers can't write lessons/activities
   migrations/0007_fix_is_admin_recursion.sql        fixes "stack depth limit exceeded" on admin writes
+  migrations/0008_live_sessions.sql                 live classes: live_sessions + participants
   seed.sql                  CBC subjects seed data
 legacy-prototype/           the original static clickable prototype (archived)
 capacitor.config.ts         Android packaging config (see section 5)
@@ -65,8 +66,30 @@ capacitor.config.ts         Android packaging config (see section 5)
 Supabase Auth exists on a fresh project, but **the app's tables and functions do not**. On an
 empty project, open the Supabase **SQL Editor** for the *same project whose URL is
 `NEXT_PUBLIC_SUPABASE_URL` in Vercel*, paste all of [`supabase/setup-all.sql`](supabase/setup-all.sql)
-and run it **once**. (It is `0001`→`0007` + the seed, in order.) Signs of a missing setup: login
+and run it **once**. (It is `0001`→`0008` + the seed, in order.) Signs of a missing setup: login
 loops back to `/login`, registration/password-reset return "database setup is incomplete".
+
+## Live classes (lessons and activities)
+
+Teachers choose **Recorded / Live** on **New lesson** and **Regular / Live** on **New activity**. A live
+one takes a date, time and duration and gets a `live_sessions` row (migration `0008`) — a lesson or
+activity "is live" simply because it has one, so existing lessons/activities are untouched.
+
+- **Flow:** teacher creates it (draft) → publishes it with the usual toggle → students see
+  **UPCOMING** → teacher presses **Start** on the lesson/activity page (opens the video room) →
+  students see **LIVE** and a **Join Live Class** button → teacher presses **End** (removes everyone)
+  → **ENDED**. A class nobody ends is shown as ENDED once it's well past its length.
+- **Video:** Daily (Prebuilt room, embedded) — one file, `lib/live/daily.ts`, so it's swappable. Rooms are
+  private; the server mints a personal entry token per person (`lib/live/actions.ts`): the teacher is host
+  (mute/remove/end/share screen), students can use camera and microphone (they join muted) but not moderate.
+  Needs `DAILY_API_KEY` and `DAILY_DOMAIN` in Vercel (see `.env.example`).
+- **Permissions:** only approved teachers create/start/end their own classes; students join a live *lesson*
+  if it's published and a live *activity* if they're enrolled; admins can end or remove any class at
+  **Admin → Live**. Clients cannot write live tables (read-only RLS); every change goes through server code.
+- **Mobile / Android:** works in mobile browsers. The Play Store app is a Capacitor WebView, so when you
+  run `npx cap add android`, add `CAMERA`, `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS` and `INTERNET` to
+  `AndroidManifest.xml`, then test joining on a real Android phone (WebView permission behaviour varies).
+- Times are shown in East Africa Time.
 
 ## Who needs approval
 

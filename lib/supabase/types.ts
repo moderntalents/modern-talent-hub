@@ -472,6 +472,82 @@ export interface Database {
           },
         ];
       };
+      live_sessions: {
+        Row: {
+          id: string;
+          kind: "lesson" | "activity";
+          lesson_id: string | null;
+          activity_id: string | null;
+          teacher_id: string;
+          scheduled_at: string;
+          duration_minutes: number;
+          status: "scheduled" | "live" | "ended";
+          room_name: string | null;
+          started_at: string | null;
+          ended_at: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["live_sessions"]["Row"]> & {
+          kind: "lesson" | "activity";
+          teacher_id: string;
+          scheduled_at: string;
+          duration_minutes: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["live_sessions"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "live_sessions_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "live_sessions_activity_id_fkey";
+            columns: ["activity_id"];
+            isOneToOne: false;
+            referencedRelation: "activities";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "live_sessions_teacher_id_fkey";
+            columns: ["teacher_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      live_session_participants: {
+        Row: {
+          id: string;
+          session_id: string;
+          profile_id: string;
+          joined_at: string;
+          last_joined_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["live_session_participants"]["Row"]> & {
+          session_id: string;
+          profile_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["live_session_participants"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "live_session_participants_session_id_fkey";
+            columns: ["session_id"];
+            isOneToOne: false;
+            referencedRelation: "live_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "live_session_participants_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {

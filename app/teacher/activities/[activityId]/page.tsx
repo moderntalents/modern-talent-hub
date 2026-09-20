@@ -4,6 +4,9 @@ import { getSessionProfile } from "@/lib/auth";
 import { formatKes, BILLING_LABELS } from "@/lib/constants";
 import { Badge } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { TeacherLivePanel } from "@/components/live/TeacherLivePanel";
+import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
+import { getParticipantRows } from "@/lib/live/queries";
 import { ActivityMaterialsManager } from "./ActivityMaterialsManager";
 import { ActivityPublishToggle } from "./ActivityPublishToggle";
 
@@ -24,6 +27,10 @@ export default async function TeacherActivityPage({
     .single();
 
   if (!activity) notFound();
+
+  // An activity is "live" when it has a live session (created from the New activity form).
+  const { data: live } = await supabase.from("live_sessions").select("*").eq("activity_id", activityId).maybeSingle();
+  const participants = live ? await getParticipantRows(live.id) : [];
 
   const [{ data: materials }, { data: students }] = await Promise.all([
     supabase.from("activity_materials").select("*").eq("activity_id", activityId),
@@ -48,6 +55,17 @@ export default async function TeacherActivityPage({
         </div>
         <ActivityPublishToggle activityId={activity.id} status={activity.status} />
       </div>
+
+      {live && (
+        <TeacherLivePanel
+          sessionId={live.id}
+          status={effectiveLiveStatus(live)}
+          scheduledLabel={formatSchedule(live.scheduled_at)}
+          durationMinutes={live.duration_minutes}
+          participants={participants}
+          noun="activity"
+        />
+      )}
 
       <div>
         <h2 className="mb-2 font-head text-sm font-bold uppercase tracking-wide text-ink-faint">Materials</h2>

@@ -7,6 +7,7 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { FileRow, PickButton } from "@/components/UploadPickers";
+import { ModeToggle, ScheduleFields } from "@/components/live/LiveModeFields";
 import { uploadAndAttach } from "@/lib/upload-client";
 import { validateUpload } from "@/lib/uploads";
 import { attachActivityMaterial } from "../[activityId]/actions";
@@ -18,6 +19,9 @@ export function NewActivityForm() {
   const [billing, setBilling] = useState("month");
   const category = ACTIVITY_CATEGORIES.find((c) => c.id === categoryId)!;
 
+  const [mode, setMode] = useState<"regular" | "live">("regular");
+  const [scheduledLocal, setScheduledLocal] = useState("");
+  const [duration, setDuration] = useState(60);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +60,19 @@ export function NewActivityForm() {
     const formData = new FormData(e.currentTarget);
 
     setError(null);
+
+    if (mode === "live") {
+      const time = Date.parse(scheduledLocal);
+      if (!scheduledLocal || Number.isNaN(time)) {
+        setError("Choose the date and time for the live class.");
+        return;
+      }
+      // The browser knows the teacher's timezone; send an unambiguous instant.
+      formData.set("activityMode", "live");
+      formData.set("scheduledAt", new Date(time).toISOString());
+      formData.set("durationMinutes", String(duration));
+    }
+
     setPending(true);
     try {
       const created = await createActivity(formData);
@@ -68,7 +85,7 @@ export function NewActivityForm() {
       const failures = await uploadAndAttach({
         bucket: "activity-materials",
         folder: activityId,
-        files: [...(videoFile ? [videoFile] : []), ...files],
+        files: [...(mode === "regular" && videoFile ? [videoFile] : []), ...files],
         attach: (file) => attachActivityMaterial({ activityId, ...file }),
         onProgress: setProgress,
       });
@@ -93,6 +110,18 @@ export function NewActivityForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Field label="Activity type">
+        <ModeToggle
+          value={mode}
+          onChange={setMode}
+          disabled={pending}
+          options={[
+            { value: "regular", label: "Regular activity" },
+            { value: "live", label: "Live activity" },
+          ]}
+        />
+      </Field>
+
       <Field label="Category">
         <Select
           name="category"
@@ -151,16 +180,26 @@ export function NewActivityForm() {
         </Field>
       </div>
 
-      <Field
-        label="Video (optional)"
-        hint="Upload a video for your students to watch (MP4 works best, up to 50 MB). Only enrolled students can see it."
-      >
-        {videoFile ? (
-          <FileRow file={videoFile} disabled={pending} onRemove={() => setVideoFile(null)} />
-        ) : (
-          <PickButton icon="🎬" label="Upload a video file" accept="video/*" disabled={pending} onPick={pickVideo} />
-        )}
-      </Field>
+      {mode === "live" ? (
+        <ScheduleFields
+          dateTime={scheduledLocal}
+          duration={duration}
+          onDateTime={setScheduledLocal}
+          onDuration={setDuration}
+          disabled={pending}
+        />
+      ) : (
+        <Field
+          label="Video (optional)"
+          hint="Upload a video for your students to watch (MP4 works best, up to 50 MB). Only enrolled students can see it."
+        >
+          {videoFile ? (
+            <FileRow file={videoFile} disabled={pending} onRemove={() => setVideoFile(null)} />
+          ) : (
+            <PickButton icon="🎬" label="Upload a video file" accept="video/*" disabled={pending} onPick={pickVideo} />
+          )}
+        </Field>
+      )}
 
       <Field
         label="Files (optional)"
@@ -179,6 +218,13 @@ export function NewActivityForm() {
         </div>
       </Field>
 
+      {mode === "live" && (
+        <p className="text-xs text-ink-faint">
+          Enrolled students see this as UPCOMING once you publish the activity, and can join after you press Start on the
+          activity page.
+        </p>
+      )}
+
       {progress && <p className="text-sm font-medium text-ink-soft">{progress}…</p>}
       {error && <ErrorBanner message={error} />}
 
@@ -186,7 +232,7 @@ export function NewActivityForm() {
         <LinkButton href={`/teacher/activities/${createdActivityId}`}>Open the activity</LinkButton>
       ) : (
         <Button type="submit" loading={pending}>
-          Create activity (draft)
+          {mode === "live" ? "Schedule live activity (draft)" : "Create activity (draft)"}
         </Button>
       )}
     </form>

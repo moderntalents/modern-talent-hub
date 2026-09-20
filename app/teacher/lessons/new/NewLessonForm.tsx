@@ -6,6 +6,7 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { FileRow, PickButton } from "@/components/UploadPickers";
+import { ModeToggle, ScheduleFields } from "@/components/live/LiveModeFields";
 import { uploadAndAttach } from "@/lib/upload-client";
 import { validateUpload } from "@/lib/uploads";
 import { attachMaterial } from "../[lessonId]/actions";
@@ -13,6 +14,9 @@ import { createLesson } from "./actions";
 
 export function NewLessonForm({ subjects }: { subjects: { id: string; name: string }[] }) {
   const router = useRouter();
+  const [mode, setMode] = useState<"recorded" | "live">("recorded");
+  const [scheduledLocal, setScheduledLocal] = useState("");
+  const [duration, setDuration] = useState(60);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +55,19 @@ export function NewLessonForm({ subjects }: { subjects: { id: string; name: stri
     const formData = new FormData(e.currentTarget);
 
     setError(null);
+
+    if (mode === "live") {
+      const time = Date.parse(scheduledLocal);
+      if (!scheduledLocal || Number.isNaN(time)) {
+        setError("Choose the date and time for the live class.");
+        return;
+      }
+      // The browser knows the teacher's timezone; send an unambiguous instant.
+      formData.set("lessonType", "live");
+      formData.set("scheduledAt", new Date(time).toISOString());
+      formData.set("durationMinutes", String(duration));
+    }
+
     setPending(true);
     try {
       const created = await createLesson(formData);
@@ -63,7 +80,7 @@ export function NewLessonForm({ subjects }: { subjects: { id: string; name: stri
       const failures = await uploadAndAttach({
         bucket: "lesson-materials",
         folder: lessonId,
-        files: [...(videoFile ? [videoFile] : []), ...files],
+        files: [...(mode === "recorded" && videoFile ? [videoFile] : []), ...files],
         attach: (file) => attachMaterial({ lessonId, ...file }),
         onProgress: setProgress,
       });
@@ -88,6 +105,18 @@ export function NewLessonForm({ subjects }: { subjects: { id: string; name: stri
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Field label="Lesson type">
+        <ModeToggle
+          value={mode}
+          onChange={setMode}
+          disabled={pending}
+          options={[
+            { value: "recorded", label: "Recorded lesson" },
+            { value: "live", label: "Live lesson" },
+          ]}
+        />
+      </Field>
+
       <Field label="Subject">
         <Select name="subjectId" defaultValue="" required>
           <option value="" disabled>
@@ -107,23 +136,37 @@ export function NewLessonForm({ subjects }: { subjects: { id: string; name: stri
         <Textarea name="description" placeholder="What this lesson covers" />
       </Field>
 
-      <Field
-        label="Video (optional)"
-        hint="Paste a YouTube or Vimeo link, or upload a video file (MP4 works best, up to 50 MB — use a link for longer videos)."
-      >
-        <div className="flex flex-col gap-2">
-          <Input name="videoUrl" type="url" placeholder="https://youtube.com/watch?v=…" />
-          {videoFile ? (
-            <FileRow file={videoFile} disabled={pending} onRemove={() => setVideoFile(null)} />
-          ) : (
-            <PickButton icon="🎬" label="Upload a video file" accept="video/*" disabled={pending} onPick={pickVideo} />
-          )}
-        </div>
-      </Field>
+      {mode === "live" ? (
+        <ScheduleFields
+          dateTime={scheduledLocal}
+          duration={duration}
+          onDateTime={setScheduledLocal}
+          onDuration={setDuration}
+          disabled={pending}
+        />
+      ) : (
+        <Field
+          label="Video (optional)"
+          hint="Paste a YouTube or Vimeo link, or upload a video file (MP4 works best, up to 50 MB — use a link for longer videos)."
+        >
+          <div className="flex flex-col gap-2">
+            <Input name="videoUrl" type="url" placeholder="https://youtube.com/watch?v=…" />
+            {videoFile ? (
+              <FileRow file={videoFile} disabled={pending} onRemove={() => setVideoFile(null)} />
+            ) : (
+              <PickButton icon="🎬" label="Upload a video file" accept="video/*" disabled={pending} onPick={pickVideo} />
+            )}
+          </div>
+        </Field>
+      )}
 
       <Field
         label="Files (optional)"
-        hint="PDF, Word, PowerPoint, Excel, images, audio and more — up to 50 MB each. Students can download them."
+        hint={
+          mode === "live"
+            ? "Slides or handouts for the live class — PDF, Word, PowerPoint and more, up to 50 MB each."
+            : "PDF, Word, PowerPoint, Excel, images, audio and more — up to 50 MB each. Students can download them."
+        }
       >
         <div className="flex flex-col gap-2">
           {files.map((file, index) => (
@@ -138,6 +181,12 @@ export function NewLessonForm({ subjects }: { subjects: { id: string; name: stri
         </div>
       </Field>
 
+      {mode === "live" && (
+        <p className="text-xs text-ink-faint">
+          Students see this as UPCOMING once you publish the lesson, and can join after you press Start on the lesson page.
+        </p>
+      )}
+
       {progress && <p className="text-sm font-medium text-ink-soft">{progress}…</p>}
       {error && <ErrorBanner message={error} />}
 
@@ -145,7 +194,7 @@ export function NewLessonForm({ subjects }: { subjects: { id: string; name: stri
         <LinkButton href={`/teacher/lessons/${createdLessonId}`}>Open the lesson</LinkButton>
       ) : (
         <Button type="submit" loading={pending}>
-          Create lesson (draft)
+          {mode === "live" ? "Schedule live lesson (draft)" : "Create lesson (draft)"}
         </Button>
       )}
     </form>

@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Card, Badge } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LiveBadge } from "@/components/live/LiveBadge";
+import { getLiveSummaries } from "@/lib/live/queries";
+import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
 
 export default async function SubjectDetailPage({
   params,
@@ -24,6 +27,9 @@ export default async function SubjectDetailPage({
 
   if (!subject) notFound();
 
+  // Live lessons carry an UPCOMING / LIVE / ENDED badge; recorded lessons look as before.
+  const liveByLesson = await getLiveSummaries("lesson", (lessons ?? []).map((l) => l.id));
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -33,19 +39,32 @@ export default async function SubjectDetailPage({
 
       {lessons && lessons.length > 0 ? (
         <div className="flex flex-col gap-2">
-          {lessons.map((lesson) => (
-            <Link key={lesson.id} href={`/student/lessons/${lesson.id}`}>
-              <Card className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold">{lesson.title}</p>
-                  {lesson.description && (
-                    <p className="line-clamp-1 text-xs text-ink-faint">{lesson.description}</p>
+          {lessons.map((lesson) => {
+            const live = liveByLesson.get(lesson.id);
+            return (
+              <Link key={lesson.id} href={`/student/lessons/${lesson.id}`}>
+                <Card className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{lesson.title}</p>
+                    {live ? (
+                      <p className="text-xs text-ink-faint">
+                        Live class · {formatSchedule(live.scheduled_at)}
+                      </p>
+                    ) : (
+                      lesson.description && (
+                        <p className="line-clamp-1 text-xs text-ink-faint">{lesson.description}</p>
+                      )
+                    )}
+                  </div>
+                  {live ? (
+                    <LiveBadge status={effectiveLiveStatus(live)} />
+                  ) : (
+                    lesson.video_url && <Badge tone="info">Video</Badge>
                   )}
-                </div>
-                {lesson.video_url && <Badge tone="info">Video</Badge>}
-              </Card>
-            </Link>
-          ))}
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       ) : (
         <EmptyState

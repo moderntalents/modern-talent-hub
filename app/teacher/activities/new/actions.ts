@@ -1,6 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createLiveSession } from "@/lib/live/sessions";
+import { parseSchedule } from "@/lib/live/status";
 import type { ActivityCategory, BillingCycle } from "@/lib/supabase/types";
 
 export interface FormState {
@@ -47,6 +49,14 @@ export async function createActivity(formData: FormData): Promise<FormState> {
     return { error: "Enter a valid price." };
   }
 
+  // A live activity also gets a scheduled live class; validate it BEFORE creating anything.
+  let schedule: { scheduledAt: string; durationMinutes: number } | null = null;
+  if (formData.get("activityMode") === "live") {
+    const parsed = parseSchedule(formData);
+    if ("error" in parsed) return { error: parsed.error };
+    schedule = parsed;
+  }
+
   const { data: activity, error } = await supabase
     .from("activities")
     .insert({
@@ -66,6 +76,21 @@ export async function createActivity(formData: FormData): Promise<FormState> {
     .single();
 
   if (error) return { error: error.message };
+
+  if (schedule) {
+    const created = await createLiveSession({
+      kind: "activity",
+      parentId: activity.id,
+      teacherId: user.id,
+      scheduledAt: schedule.scheduledAt,
+      durationMinutes: schedule.durationMinutes,
+    });
+    if (created.error) {
+      // Don't leave a live activity with no live session behind.
+      await supabase.from("activities").delete().eq("id", activity.id);
+      return { error: `Could not schedule the live class: ${created.error}` };
+    }
+  }
 
   return { activityId: activity.id };
 }

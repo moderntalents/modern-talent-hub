@@ -4,6 +4,9 @@ import { arePaymentsEnabled } from "@/lib/settings";
 import { ACTIVITY_CATEGORIES, BILLING_LABELS, formatKes, type ActivityCategoryId } from "@/lib/constants";
 import { Card, Badge } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LiveBadge } from "@/components/live/LiveBadge";
+import { getLiveSummaries } from "@/lib/live/queries";
+import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
 
 export default async function MarketplacePage({
   searchParams,
@@ -26,6 +29,9 @@ export default async function MarketplacePage({
     query.order("created_at", { ascending: false }),
     arePaymentsEnabled(),
   ]);
+
+  // Live activities show an UPCOMING / LIVE / ENDED badge; regular ones look as before.
+  const liveByActivity = await getLiveSummaries("activity", (activities ?? []).map((a) => a.id));
 
   return (
     <div className="flex flex-col gap-4">
@@ -54,7 +60,9 @@ export default async function MarketplacePage({
 
       {activities && activities.length > 0 ? (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {activities.map((activity) => (
+          {activities.map((activity) => {
+            const live = liveByActivity.get(activity.id);
+            return (
             <Link key={activity.id} href={`/student/marketplace/${activity.id}`}>
               <Card className="flex flex-col gap-2">
                 <div className="flex items-start justify-between">
@@ -69,6 +77,12 @@ export default async function MarketplacePage({
                 {activity.description && (
                   <p className="line-clamp-2 text-sm text-ink-soft">{activity.description}</p>
                 )}
+                {live && (
+                  <div className="flex items-center gap-2">
+                    <LiveBadge status={effectiveLiveStatus(live)} />
+                    <span className="text-xs text-ink-faint">Live class · {formatSchedule(live.scheduled_at)}</span>
+                  </div>
+                )}
                 <p className="font-head text-sm font-bold">
                   {paymentsOn && activity.price > 0 ? formatKes(activity.price) : "Free"}
                   {paymentsOn && activity.price > 0 && (
@@ -77,7 +91,8 @@ export default async function MarketplacePage({
                 </p>
               </Card>
             </Link>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <EmptyState
