@@ -1,22 +1,98 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ACTIVITY_CATEGORIES, type ActivityCategoryId } from "@/lib/constants";
-import { Button } from "@/components/ui/Button";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
-import { createActivity, type FormState } from "./actions";
-
-const initialState: FormState = {};
+import { FileRow, PickButton } from "@/components/UploadPickers";
+import { uploadAndAttach } from "@/lib/upload-client";
+import { validateUpload } from "@/lib/uploads";
+import { attachActivityMaterial } from "../[activityId]/actions";
+import { createActivity } from "./actions";
 
 export function NewActivityForm() {
-  const [state, formAction, pending] = useActionState(createActivity, initialState);
+  const router = useRouter();
   const [categoryId, setCategoryId] = useState<ActivityCategoryId>(ACTIVITY_CATEGORIES[0].id);
   const [billing, setBilling] = useState("month");
   const category = ACTIVITY_CATEGORIES.find((c) => c.id === categoryId)!;
 
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  // Set only when the activity was created but some files failed, so the teacher
+  // can open it and add them there without creating a duplicate listing.
+  const [createdActivityId, setCreatedActivityId] = useState<string | null>(null);
+
+  function pickVideo(picked: File[]) {
+    const file = picked[0];
+    if (!file) return;
+    const problem = validateUpload(file);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setError(null);
+    setVideoFile(file);
+  }
+
+  function pickFiles(picked: File[]) {
+    const accepted: File[] = [];
+    const problems: string[] = [];
+    for (const file of picked) {
+      const problem = validateUpload(file);
+      if (problem) problems.push(problem);
+      else accepted.push(file);
+    }
+    setFiles((current) => [...current, ...accepted]);
+    setError(problems.length ? problems.join(" ") : null);
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+
+    setError(null);
+    setPending(true);
+    try {
+      const created = await createActivity(formData);
+      if (created.error || !created.activityId) {
+        setError(created.error ?? "Could not create the activity.");
+        return;
+      }
+      const activityId = created.activityId;
+
+      const failures = await uploadAndAttach({
+        bucket: "activity-materials",
+        folder: activityId,
+        files: [...(videoFile ? [videoFile] : []), ...files],
+        attach: (file) => attachActivityMaterial({ activityId, ...file }),
+        onProgress: setProgress,
+      });
+
+      if (failures.length > 0) {
+        setCreatedActivityId(activityId);
+        setError(
+          `The activity was created, but ${failures.length} file${failures.length > 1 ? "s" : ""} couldn't be uploaded: ` +
+            `${failures.join("; ")}. Open the activity to add ${failures.length > 1 ? "them" : "it"} again.`,
+        );
+        return;
+      }
+
+      router.push(`/teacher/activities/${activityId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setPending(false);
+      setProgress(null);
+    }
+  }
+
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <Field label="Category">
         <Select
           name="category"
@@ -75,11 +151,44 @@ export function NewActivityForm() {
         </Field>
       </div>
 
-      {state?.error && <ErrorBanner message={state.error} />}
+      <Field
+        label="Video (optional)"
+        hint="Upload a video for your students to watch (MP4 works best, up to 50 MB). Only enrolled students can see it."
+      >
+        {videoFile ? (
+          <FileRow file={videoFile} disabled={pending} onRemove={() => setVideoFile(null)} />
+        ) : (
+          <PickButton icon="🎬" label="Upload a video file" accept="video/*" disabled={pending} onPick={pickVideo} />
+        )}
+      </Field>
 
-      <Button type="submit" loading={pending}>
-        Create activity (draft)
-      </Button>
+      <Field
+        label="Files (optional)"
+        hint="PDF, Word, PowerPoint, Excel, images, audio and more — up to 50 MB each. Enrolled students can download them."
+      >
+        <div className="flex flex-col gap-2">
+          {files.map((file, index) => (
+            <FileRow
+              key={`${file.name}-${index}`}
+              file={file}
+              disabled={pending}
+              onRemove={() => setFiles((current) => current.filter((_, i) => i !== index))}
+            />
+          ))}
+          <PickButton icon="📎" label="Attach files" multiple disabled={pending} onPick={pickFiles} />
+        </div>
+      </Field>
+
+      {progress && <p className="text-sm font-medium text-ink-soft">{progress}…</p>}
+      {error && <ErrorBanner message={error} />}
+
+      {createdActivityId ? (
+        <LinkButton href={`/teacher/activities/${createdActivityId}`}>Open the activity</LinkButton>
+      ) : (
+        <Button type="submit" loading={pending}>
+          Create activity (draft)
+        </Button>
+      )}
     </form>
   );
 }

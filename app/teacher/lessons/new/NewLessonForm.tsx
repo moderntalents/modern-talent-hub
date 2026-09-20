@@ -1,69 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button, LinkButton } from "@/components/ui/Button";
-import { Card, Field, Input, Select, Textarea } from "@/components/ui/Card";
+import { Field, Input, Select, Textarea } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/EmptyState";
-import { humanFileSize } from "@/lib/format";
+import { FileRow, PickButton } from "@/components/UploadPickers";
+import { uploadAndAttach } from "@/lib/upload-client";
 import { validateUpload } from "@/lib/uploads";
 import { attachMaterial } from "../[lessonId]/actions";
 import { createLesson } from "./actions";
-
-function PickButton({
-  icon,
-  label,
-  accept,
-  multiple,
-  disabled,
-  onPick,
-}: {
-  icon: string;
-  label: string;
-  accept?: string;
-  multiple?: boolean;
-  disabled?: boolean;
-  onPick: (files: File[]) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  return (
-    <label className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-surface-2 px-3.5 text-sm font-medium text-ink-soft hover:border-brand-cyan-deep">
-      {icon} {label}
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        multiple={multiple}
-        disabled={disabled}
-        className="hidden"
-        onChange={(e) => {
-          onPick(Array.from(e.target.files ?? []));
-          if (inputRef.current) inputRef.current.value = "";
-        }}
-      />
-    </label>
-  );
-}
-
-function FileRow({ file, disabled, onRemove }: { file: File; disabled: boolean; onRemove: () => void }) {
-  return (
-    <Card className="flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold">{file.name}</p>
-        <p className="text-xs text-ink-faint">{humanFileSize(file.size)}</p>
-      </div>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onRemove}
-        className="shrink-0 text-xs font-semibold text-brand-red-deep disabled:opacity-50"
-      >
-        Remove
-      </button>
-    </Card>
-  );
-}
 
 export function NewLessonForm({ subjects }: { subjects: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -114,35 +60,13 @@ export function NewLessonForm({ subjects }: { subjects: { id: string; name: stri
       }
       const lessonId = created.lessonId;
 
-      // Upload straight from the browser to storage (not through the server, so
-      // large files aren't limited by the hosting request size), then record
-      // each file against the lesson.
-      const queue = [...(videoFile ? [videoFile] : []), ...files];
-      const failures: string[] = [];
-      const supabase = createClient();
-
-      for (let i = 0; i < queue.length; i++) {
-        const file = queue[i];
-        setProgress(`Uploading file ${i + 1} of ${queue.length}: ${file.name}`);
-        try {
-          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-          const path = `${lessonId}/${crypto.randomUUID()}-${safeName}`;
-          const { error: uploadError } = await supabase.storage
-            .from("lesson-materials")
-            .upload(path, file, { cacheControl: "3600", upsert: false });
-          if (uploadError) throw uploadError;
-
-          await attachMaterial({
-            lessonId,
-            storagePath: path,
-            fileName: file.name,
-            fileType: file.type || "application/octet-stream",
-            fileSize: file.size,
-          });
-        } catch (err) {
-          failures.push(`${file.name} (${err instanceof Error ? err.message : "upload failed"})`);
-        }
-      }
+      const failures = await uploadAndAttach({
+        bucket: "lesson-materials",
+        folder: lessonId,
+        files: [...(videoFile ? [videoFile] : []), ...files],
+        attach: (file) => attachMaterial({ lessonId, ...file }),
+        onProgress: setProgress,
+      });
 
       if (failures.length > 0) {
         setCreatedLessonId(lessonId);

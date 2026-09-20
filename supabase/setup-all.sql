@@ -4,7 +4,7 @@
 -- Paste this whole file into the Supabase SQL Editor (the project whose URL is
 -- NEXT_PUBLIC_SUPABASE_URL in Vercel) and click Run ONCE, on an EMPTY database.
 -- It is the concatenation of, in order:
---   migrations/0001_init.sql, seed.sql, 0002, 0003, 0004, 0005, 0006
+--   migrations/0001_init.sql, seed.sql, 0002 ... 0007
 -- (the individual files remain the source of truth — regenerate this file if
 -- they change). Running it twice will error on "already exists"; that's safe,
 -- just don't re-run it. Already set up? Run only the newest migration files.
@@ -1060,4 +1060,35 @@ create trigger trg_lessons_require_approved_teacher
 create trigger trg_activities_require_approved_teacher
   before insert or update on activities
   for each row execute function require_approved_teacher();
+
+
+-- ############################################################################
+-- ## migrations/0007_fix_is_admin_recursion.sql
+-- ############################################################################
+
+-- Modern Talent Hub — fix "stack depth limit exceeded" on admin actions
+-- Run after 0006_teacher_approval_enforcement.sql. Safe to run more than once.
+--
+-- Bug: is_admin() (from 0001) reads the profiles table, but profiles has its own
+-- row-level-security policy that calls is_admin() again. When Postgres has to
+-- evaluate that policy for a row that isn't the caller's own, it re-enters
+-- is_admin() forever and aborts with "stack depth limit exceeded". Admin
+-- actions that WRITE (approving a teacher, updating settings, processing
+-- withdrawals) hit it; plain reads mostly dodge it.
+--
+-- Fix: run is_admin() with the owner's rights (SECURITY DEFINER) so its lookup on
+-- profiles bypasses those policies and the recursion never starts. It still
+-- answers only "is the CURRENT signed-in user an admin?" — auth.uid() is read
+-- from the caller's login, not from the function owner — and returns just a
+-- boolean. CREATE OR REPLACE keeps every policy that already uses it.
+
+create or replace function is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from profiles where id = auth.uid() and role = 'admin');
+$$;
 

@@ -1,14 +1,18 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { ActivityCategory, BillingCycle } from "@/lib/supabase/types";
 
 export interface FormState {
   error?: string;
+  activityId?: string;
 }
 
-export async function createActivity(_prevState: FormState, formData: FormData): Promise<FormState> {
+// Creates the draft activity and returns its id. The form then uploads any
+// selected video/files straight from the browser (they must live under the
+// activity's id folder, which is what the storage policy checks) and opens the
+// activity page — so the redirect happens in the form, not here.
+export async function createActivity(formData: FormData): Promise<FormState> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -63,5 +67,5 @@ export async function createActivity(_prevState: FormState, formData: FormData):
 
   if (error) return { error: error.message };
 
-  redirect(`/teacher/activities/${activity.id}`);
+  return { activityId: activity.id };
 }

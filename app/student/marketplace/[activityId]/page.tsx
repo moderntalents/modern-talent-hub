@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
 import { getSignedUrl } from "@/lib/storage";
 import { arePaymentsEnabled } from "@/lib/settings";
+import { isVideoFile } from "@/lib/uploads";
 import { BILLING_LABELS, formatKes } from "@/lib/constants";
 import { Card, Badge } from "@/components/ui/Card";
 import { SubscribeForm } from "./SubscribeForm";
@@ -77,18 +78,29 @@ export default async function ActivityDetailPage({
             Materials
           </h2>
           <div className="flex flex-col gap-2">
-            {materialLinks.map((m) => (
-              <Card key={m.id} className="flex items-center justify-between">
-                <p className="text-sm font-semibold">{m.file_name}</p>
-                {m.url && subscription?.status === "active" ? (
-                  <a href={m.url} download className="text-sm font-semibold text-brand-cyan-deep">
-                    Download
-                  </a>
-                ) : (
-                  <span className="text-xs text-ink-faint">Enrol to access</span>
-                )}
-              </Card>
-            ))}
+            {materialLinks.map((m) =>
+              // Enrolled students can watch an uploaded video right here;
+              // everyone else (and every other file type) gets the usual row.
+              m.url && subscription?.status === "active" && isVideoFile(m.file_type, m.file_name) ? (
+                <div key={m.id} className="flex flex-col gap-1.5">
+                  <p className="text-sm font-semibold">{m.file_name}</p>
+                  <div className="overflow-hidden rounded-[var(--radius-brand)] border border-line bg-black">
+                    <video src={m.url} controls preload="metadata" className="aspect-video w-full" />
+                  </div>
+                </div>
+              ) : (
+                <Card key={m.id} className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">{m.file_name}</p>
+                  {m.url && subscription?.status === "active" ? (
+                    <a href={m.url} download className="text-sm font-semibold text-brand-cyan-deep">
+                      Download
+                    </a>
+                  ) : (
+                    <span className="text-xs text-ink-faint">Enrol to access</span>
+                  )}
+                </Card>
+              ),
+            )}
           </div>
         </div>
       )}

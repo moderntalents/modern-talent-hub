@@ -54,6 +54,7 @@ supabase/
   migrations/0004_lock_down_roles.sql       blocks self-promotion to admin (signup + update)
   migrations/0005_registration_codes.sql    5-digit registration code storage + rate limits
   migrations/0006_teacher_approval_enforcement.sql  unapproved teachers can't write lessons/activities
+  migrations/0007_fix_is_admin_recursion.sql        fixes "stack depth limit exceeded" on admin writes
   seed.sql                  CBC subjects seed data
 legacy-prototype/           the original static clickable prototype (archived)
 capacitor.config.ts         Android packaging config (see section 5)
@@ -64,7 +65,7 @@ capacitor.config.ts         Android packaging config (see section 5)
 Supabase Auth exists on a fresh project, but **the app's tables and functions do not**. On an
 empty project, open the Supabase **SQL Editor** for the *same project whose URL is
 `NEXT_PUBLIC_SUPABASE_URL` in Vercel*, paste all of [`supabase/setup-all.sql`](supabase/setup-all.sql)
-and run it **once**. (It is `0001`→`0006` + the seed, in order.) Signs of a missing setup: login
+and run it **once**. (It is `0001`→`0007` + the seed, in order.) Signs of a missing setup: login
 loops back to `/login`, registration/password-reset return "database setup is incomplete".
 
 ## Who needs approval
