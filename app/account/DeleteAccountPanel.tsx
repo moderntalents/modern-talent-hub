@@ -78,7 +78,8 @@ export function DeleteAccountPanel({ role }: { role: "student" | "teacher" }) {
           )}
         </ul>
         <p className="mt-2 text-sm text-ink-soft">
-          Payment records, if you have any, are kept without your name or email, as the law requires.
+          Payment records, if you have any, may be kept where the law requires, as an anonymous record (amounts, dates,
+          statuses and receipt numbers). Your name, email, phone number and payout details are removed from them.
         </p>
       </div>
 

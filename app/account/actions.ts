@@ -17,8 +17,11 @@ import { CONTACT_EMAIL } from "@/lib/legal";
 //     the database when the profile goes), so the teacher's name/details disappear.
 //   * SCRUB (only if the person has payment/payout records): those records reference the
 //     user and the law expects them to be kept, so the row stays but every personal
-//     detail is blanked, the login is disabled and the email replaced. (Payments are
-//     currently switched off, so today nobody has records — this is ready for when they do.)
+//     detail is blanked (including the M-Pesa number / bank account on payout requests and
+//     the phone number on activation payments), the login identities (e.g. Google) are
+//     removed, the login is disabled and the email replaced. What stays is an anonymous
+//     ledger: amounts, dates, statuses and payment reference numbers. (Payments may be
+//     switched off, in which case nobody has records — this is ready for when they do.)
 
 export type DeleteAccountResult = { ok: true } | { ok: false; message: string };
 
@@ -93,6 +96,18 @@ async function cleanUpTeacherContent(admin: Admin, userId: string) {
   }
 }
 
+// Payment/payout tables have NOT NULL phone/destination columns, so personal values are
+// replaced by this marker instead of NULL.
+const REMOVED = "removed";
+
+// Removes Google (or any other) sign-in identities and open sessions, using the
+// delete_user_identities function from migration 0009. Throws if it is missing, so the
+// deletion stops before anything else is changed and can simply be retried.
+async function removeLoginIdentities(admin: Admin, userId: string) {
+  const { error } = await admin.rpc("delete_user_identities", { p_user_id: userId });
+  if (error) throw new Error(`remove login identities: ${error.message}`);
+}
+
 // For people with payment/payout records: keep the row, remove the person.
 async function scrubAccount(admin: Admin, userId: string) {
   must(await admin.from("live_session_participants").delete().eq("profile_id", userId), "clear live-class records");
@@ -105,6 +120,15 @@ async function scrubAccount(admin: Admin, userId: string) {
   // Published lessons are kept, no longer linked to this person.
   must(await admin.from("lessons").update({ teacher_id: null }).eq("teacher_id", userId), "detach lessons");
   must(await admin.from("student_profiles").delete().eq("profile_id", userId), "remove student details");
+  // The financial ledger stays, but the personal numbers in it do not.
+  must(
+    await admin.from("withdrawal_requests").update({ destination: REMOVED, notes: null }).eq("teacher_id", userId),
+    "remove payout details",
+  );
+  must(
+    await admin.from("coach_activation_payments").update({ phone: REMOVED }).eq("teacher_id", userId),
+    "remove activation phone numbers",
+  );
   must(
     await admin
       .from("teacher_profiles")
@@ -166,6 +190,10 @@ export async function deleteMyAccount(confirmation: string): Promise<DeleteAccou
     }
 
     const keepRecords = await hasFinancialRecords(admin, user.id);
+
+    // First step on the scrub path: if this fails nothing else has been touched yet.
+    // (A hard delete removes the identities together with the login, so it needs no call.)
+    if (keepRecords) await removeLoginIdentities(admin, user.id);
 
     if (profile.role === "student") await removeStudentFiles(admin, user.id);
     if (profile.role === "teacher") await cleanUpTeacherContent(admin, user.id);

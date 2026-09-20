@@ -7,4 +7,4 @@ export const LEGAL_LAST_UPDATED = "21 September 2026";
 
 // How quickly a deletion request sent by email is completed. It is stated on the
 // deletion page, so it is a promise — keep it something you can actually do.
-export const DELETION_REQUEST_DAYS = 14;
+export const DELETION_REQUEST_DAYS = 30;

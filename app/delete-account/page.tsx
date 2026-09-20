@@ -49,7 +49,10 @@ export default function DeleteAccountPage() {
       <H2>What is deleted</H2>
       <UL>
         <li>Your login, name, email address and phone number.</li>
-        <li>Your grade, school, bio, what you teach, and payout details.</li>
+        <li>
+          Your grade, school, bio and what you teach, and the payout details you saved (M-Pesa number or bank account). Your
+          Google sign-in details are removed too.
+        </li>
         <li>Files you uploaded (such as assignment submissions), your activity enrolments, and your live-class records.</li>
         <li>
           <strong>Teachers and coaches:</strong> your activities and their files, and any draft lessons, are deleted. Lessons you had{" "}
@@ -61,10 +64,18 @@ export default function DeleteAccountPage() {
       <H2>What we may keep</H2>
       <UL>
         <li>
-          Payment and payout records, where the law requires us to keep them for tax and accounting. If you have any, your
-          personal details are removed from them and they are kept without your name or email.
+          Payment and payout records, where the law requires us to keep them for tax and accounting. If you have any, we
+          remove your name, email address, phone number and payout details (M-Pesa number or bank account) from them. What
+          remains is an anonymous record: amounts, dates, statuses and payment reference numbers.
         </li>
-        <li>Nothing else is kept about you once your account is deleted.</li>
+        <li>
+          Published lessons, as described above, without your name or details.
+        </li>
+        <li>
+          Nothing else is kept about you in our system once your account is deleted. Our service providers may keep routine
+          backups or technical logs for a limited time under their own policies, so a deleted item can remain in a backup
+          copy for a while before it is overwritten.
+        </li>
       </UL>
 
       <H2>Before you delete</H2>

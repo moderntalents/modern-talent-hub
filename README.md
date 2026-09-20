@@ -56,6 +56,7 @@ supabase/
   migrations/0006_teacher_approval_enforcement.sql  unapproved teachers can't write lessons/activities
   migrations/0007_fix_is_admin_recursion.sql        fixes "stack depth limit exceeded" on admin writes
   migrations/0008_live_sessions.sql                 live classes: live_sessions + participants
+  migrations/0009_delete_user_identities.sql        account deletion: removes Google identities/sessions
   seed.sql                  CBC subjects seed data
 legacy-prototype/           the original static clickable prototype (archived)
 capacitor.config.ts         Android packaging config (see section 5)
@@ -66,7 +67,7 @@ capacitor.config.ts         Android packaging config (see section 5)
 Supabase Auth exists on a fresh project, but **the app's tables and functions do not**. On an
 empty project, open the Supabase **SQL Editor** for the *same project whose URL is
 `NEXT_PUBLIC_SUPABASE_URL` in Vercel*, paste all of [`supabase/setup-all.sql`](supabase/setup-all.sql)
-and run it **once**. (It is `0001`→`0008` + the seed, in order.) Signs of a missing setup: login
+and run it **once**. (It is `0001`→`0009` + the seed, in order.) Signs of a missing setup: login
 loops back to `/login`, registration/password-reset return "database setup is incomplete".
 
 ## Live classes (lessons and activities)
@@ -96,7 +97,7 @@ activity "is live" simply because it has one, so existing lessons/activities are
 - **Public pages** (no login): `/privacy` (Privacy Policy), `/delete-account` (how to delete + what is
   kept — this is the "web link" Google Play asks for), `/account-deleted`. Linked from the home, login
   and signup pages and from the account page. Wording/dates/contact live in `lib/legal.ts`
-  (contact `moderntalentshub@gmail.com`, email requests completed within 14 days).
+  (contact `moderntalentshub@gmail.com`, email requests completed within 30 days).
 - **In-app deletion:** signed-in students and teachers open **Account & privacy** (menu, next to Sign
   out) → `/account` → **Delete my account** → type `DELETE`. It lives outside `/teacher` on purpose, so a
   teacher awaiting approval can still delete their account. Admins can't self-delete.
@@ -105,9 +106,13 @@ activity "is live" simply because it has one, so existing lessons/activities are
   activities and draft lessons, and all their files, are deleted. Teachers with wallet money or a pending
   withdrawal are asked to settle first. If the person has any payment/payout record (those rows reference
   the user and should be kept), the account is **scrubbed** instead — details blanked, email replaced,
-  login disabled — and the anonymous ledger stays. Known gap: for a Google-signed-in person on that
-  scrub path, the Google name/email copy inside Supabase's `auth.identities` is not cleared (fixing it
-  needs a small database function); it doesn't apply while payments are off.
+  login disabled — and the anonymous ledger stays (amounts, dates, statuses, payment reference numbers).
+  The scrub also blanks `withdrawal_requests.destination`/`notes` and `coach_activation_payments.phone`
+  (set to `removed`, those columns are NOT NULL) and removes the person's `auth.identities` (Google) and
+  sessions through the `delete_user_identities` database function, **migration `0009`**. Production
+  already set up from an older `setup-all.sql` must run `0009_delete_user_identities.sql` once; until
+  then a scrub-path deletion fails safely (before changing anything) and can be retried. A plain hard
+  delete needs no 0009 (deleting the login removes its identities).
 - **Not done yet (Stage 2/3):** age screen, parental consent and child-account restrictions for the
   mixed audience; the Privacy Policy's "Children" section describes today's behaviour and must be
   updated when those exist.

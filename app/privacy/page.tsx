@@ -56,9 +56,11 @@ export default function PrivacyPolicyPage() {
       <P><strong>Live classes (video and audio)</strong></P>
       <UL>
         <li>
-          If you turn on your camera or microphone in a live class, your video and audio are sent to the other people in
-          that class through our video provider (Daily). Your phone or browser asks your permission first, and you can turn
-          them off at any time. We do not record live classes.
+          When you join a live class you first see a screen to check your camera and microphone. Your microphone starts
+          off; your camera may be on when you join. You can turn either off at any time. (A teacher hosting a class starts
+          with their microphone on.) While your camera or microphone is on, your video and audio are sent to the other
+          people in that class through our video provider (Daily). Your phone or browser asks your permission first. We do
+          not record live classes.
         </li>
         <li>
           Live classes have a group text chat. Your name is shown to the other people in the class. We do not offer private
@@ -68,9 +70,12 @@ export default function PrivacyPolicyPage() {
       <P><strong>Payments</strong></P>
       <UL>
         <li>
-          Paid features may be switched on in future. When they are, payments are made with M-Pesa (Safaricom). You enter
-          your PIN on your own phone; we never see it. We keep a record of each payment: the amount, its status and the
-          M-Pesa receipt number (and, for a coach activation fee, the phone number used).
+          Some features can be paid for with M-Pesa (Safaricom) when payment is switched on for them. You confirm the
+          payment with your PIN on your own phone; we never see it. For a payment for an activity, the phone number you
+          enter goes to Safaricom and we do not keep it. We keep a record of each payment: who paid and who was paid, the
+          amount and currency, the status, the M-Pesa receipt number, the reference numbers Safaricom gives us for that
+          payment, and how the amount was shared between the teacher and the platform. For a coach activation fee we also
+          keep the phone number used and Safaricom’s result message.
         </li>
       </UL>
       <P><strong>Emails we send you</strong></P>
@@ -101,9 +106,9 @@ export default function PrivacyPolicyPage() {
         not sell personal information.
       </P>
       <UL>
-        <li><strong>Supabase</strong> — accounts, our database and file storage. Its servers are in the United States.</li>
+        <li><strong>Supabase</strong> — accounts, our database and file storage.</li>
         <li><strong>Vercel</strong> — hosting of the website and app.</li>
-        <li><strong>Daily</strong> — live video and audio for live classes (United States).</li>
+        <li><strong>Daily</strong> — live video and audio for live classes.</li>
         <li><strong>Google</strong> — “Sign in with Google”, and Gmail for the emails we send you. When a teacher adds a YouTube video to a lesson, YouTube (Google) may collect information when it is played, under Google’s own policy. We use YouTube’s privacy-enhanced player.</li>
         <li><strong>Safaricom (M-Pesa)</strong> — to process payments and payouts.</li>
       </UL>
@@ -113,8 +118,8 @@ export default function PrivacyPolicyPage() {
         requires it or to protect people’s safety.
       </P>
       <P>
-        Because some of these providers are outside Kenya, your information is processed in other countries, including the
-        United States. We choose providers that protect information with appropriate safeguards.
+        Some of our service providers may process information outside Kenya, including in the United States. We choose
+        providers that protect information with appropriate safeguards.
       </P>
 
       <H2>Children</H2>
@@ -126,7 +131,11 @@ export default function PrivacyPolicyPage() {
         <li>We collect only the information listed above and only what is needed to provide the service.</li>
         <li>We show no advertising, we do not sell children’s information, and we do not track children for marketing.</li>
         <li>We do not collect a child’s location, contacts or advertising ID.</li>
-        <li>Children cannot send private messages. Their camera and microphone are used only if they choose to switch them on in a live class.</li>
+        <li>Children cannot send private messages.</li>
+        <li>
+          When you join a live class you first see a screen to check your camera and microphone. Your microphone starts
+          off; your camera may be on when you join. You can turn either off at any time.
+        </li>
         <li>
           <strong>Parents and guardians:</strong> you can ask us at any time to show you what we hold about your child, to correct it,
           or to delete your child’s account and data — email us at{" "}
@@ -139,9 +148,16 @@ export default function PrivacyPolicyPage() {
       <H2>How long we keep information</H2>
       <UL>
         <li>Your account information and content are kept while your account exists and are deleted when you delete it.</li>
-        <li>Payment and payout records are kept, without your name or email, for as long as tax and accounting law requires.</li>
+        <li>
+          Payment and payout records are kept for as long as tax and accounting law requires. When you delete your account,
+          your name, email address, phone number and payout details (M-Pesa number or bank account) are removed from them.
+          What remains is an anonymous record: amounts, dates, statuses and payment reference numbers.
+        </li>
         <li>Email verification codes expire after 10 minutes. Short-lived security records are kept for up to a day.</li>
-        <li>Our providers may keep their own technical logs for a short time under their own policies.</li>
+        <li>
+          Our providers may keep their own technical logs and routine backups for a limited time under their own
+          policies, so a deleted item can remain in a backup copy for a while before it is overwritten.
+        </li>
       </UL>
 
       <H2>Your rights</H2>
@@ -167,7 +183,11 @@ export default function PrivacyPolicyPage() {
       <UL>
         <li>All traffic uses encrypted connections (HTTPS).</li>
         <li>Passwords are stored in a scrambled (hashed) form, and email codes are stored only as one-way hashes.</li>
-        <li>Uploaded files are private and are shared through short-lived links; access rules restrict who can see which records.</li>
+        <li>
+          Uploaded files are not public. Lesson and activity files can be opened only by signed-in users, through
+          short-lived links. Students’ assignment files can be seen only by the student and their teacher. Access rules
+          also restrict who can see which records.
+        </li>
         <li>Teachers are approved by an administrator before they can publish content.</li>
       </UL>
       <P>No system is perfectly secure, but we work to protect your information and will act quickly on any problem we find.</P>
