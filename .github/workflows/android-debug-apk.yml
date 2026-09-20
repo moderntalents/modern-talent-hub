@@ -35,7 +35,10 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      # GitHub's Ubuntu machines already include the Android SDK ($ANDROID_HOME); the
+      # build only needs its licences accepted so Gradle can fetch any missing part.
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       # `npm install` (not `npm ci`): the Android build only needs the Capacitor
       # packages, and this keeps the job independent of the web app's lockfile.
