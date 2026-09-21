@@ -1,4 +1,6 @@
 import { requireRole } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { requireAgeCleared } from "@/lib/age-gate";
 import { AppShell } from "@/components/nav/AppShell";
 
 const NAV_ITEMS = [
@@ -9,7 +11,9 @@ const NAV_ITEMS = [
 ];
 
 export default async function StudentLayout({ children }: { children: React.ReactNode }) {
-  const { profile } = await requireRole("student");
+  const { user, profile } = await requireRole("student");
+  // Age check + parent/guardian approval for under-18s (Stage 2). Redirects if not cleared.
+  await requireAgeCleared(await createClient(), user, "student");
 
   return (
     <AppShell navItems={NAV_ITEMS} userName={profile.full_name} roleLabel="Student">

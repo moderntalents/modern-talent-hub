@@ -9,6 +9,8 @@ import {
   normalizeEmail,
 } from "@/lib/verification";
 import { missingDatabaseSetupResponse } from "@/lib/db-errors";
+import { ageGroup, ageInYears, guardianEmailProblem, needsGuardian, parseIsoDate } from "@/lib/age";
+import { recordAge } from "@/lib/consent";
 
 const str = (v: unknown, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
@@ -32,7 +34,9 @@ export async function POST(request: Request) {
   const code = str(body?.code, 20);
   const password = typeof body?.password === "string" ? body.password : "";
   const fullName = str(body?.fullName, 100);
-  const phone = str(body?.phone, 30);
+  const phoneInput = str(body?.phone, 30);
+  const dobIso = parseIsoDate(body?.dateOfBirth);
+  const guardianEmail = str(body?.guardianEmail, 254);
   const role = body?.role === "teacher" ? "teacher" : body?.role === "student" ? "student" : null;
   const grade = str(body?.grade, 50);
   const schoolName = str(body?.schoolName, 150);
@@ -45,7 +49,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid verification code.", code: "invalid" }, { status: 400 });
   }
   if (!fullName) return NextResponse.json({ error: "Enter your full name." }, { status: 400 });
-  if (!phone) return NextResponse.json({ error: "Enter your phone number." }, { status: 400 });
+  if (!dobIso) return NextResponse.json({ error: "Enter your date of birth." }, { status: 400 });
   if (password.length < 8 || password.length > 72) {
     return NextResponse.json({ error: "Password must be between 8 and 72 characters." }, { status: 400 });
   }
@@ -54,6 +58,22 @@ export async function POST(request: Request) {
   if (role === "teacher" && !specialty) {
     return NextResponse.json({ error: "Enter what you teach." }, { status: 400 });
   }
+
+  // Age rules (Stage 2). The server works out the age from the date itself; whatever the
+  // browser thinks about age is ignored. All of this is checked BEFORE the emailed code is
+  // used up, so a fixable mistake doesn't cost the person their code.
+  const age = ageInYears(dobIso);
+  const group = ageGroup(age);
+  if (role === "teacher" && needsGuardian(age)) {
+    return NextResponse.json({ error: "Teacher accounts are for people aged 18 or over." }, { status: 400 });
+  }
+  if (needsGuardian(age)) {
+    const problem = guardianEmailProblem(guardianEmail, email);
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+  }
+  // Adults must give a phone number. Under 18 it is optional; under 13 we don't ask for or keep one.
+  const phone = group === "child" ? "" : phoneInput;
+  if (group === "adult" && !phone) return NextResponse.json({ error: "Enter your phone number." }, { status: 400 });
 
   const admin = createAdminClient();
 
@@ -131,14 +151,14 @@ export async function POST(request: Request) {
 
   // email_confirm: true — the email is verified by the code just checked.
   // Role is limited to student/teacher above (and again in the DB trigger).
-  const { error: createError } = await admin.auth.admin.createUser({
+  const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
     user_metadata: {
       role,
       full_name: fullName,
-      phone,
+      ...(phone ? { phone } : {}),
       grade,
       school_name: schoolName,
       specialty,
@@ -161,5 +181,29 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true });
+  // Record the date of birth and, for under-18s, email the guardian. If this fails we remove
+  // the just-created account rather than leave an account with no age on record (and even if
+  // that removal failed, the app's age gate would still stop them at first login).
+  const userId = created?.user?.id;
+  const recorded = userId
+    ? await recordAge(admin, {
+        profileId: userId,
+        role,
+        dobIso,
+        accountEmail: email,
+        guardianEmail: guardianEmail || null,
+        childName: fullName,
+      })
+    : ({ ok: false, message: "Something went wrong. Please try again." } as const);
+
+  if (!recorded.ok) {
+    console.error("[verify-registration] recording age failed:", recorded.message);
+    if (userId) await admin.auth.admin.deleteUser(userId);
+    return NextResponse.json(
+      { error: `We couldn't finish creating your account: ${recorded.message} Request a new code and try again.` },
+      { status: 422 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, consent: recorded.consent, guardianEmailSent: recorded.emailSent });
 }

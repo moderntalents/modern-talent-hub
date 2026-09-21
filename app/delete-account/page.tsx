@@ -49,6 +49,7 @@ export default function DeleteAccountPage() {
       <H2>What is deleted</H2>
       <UL>
         <li>Your login, name, email address and phone number.</li>
+        <li>Your date of birth and, if you are under 18, your parent or guardian’s email address and their answer.</li>
         <li>
           Your grade, school, bio and what you teach, and the payout details you saved (M-Pesa number or bank account). Your
           Google sign-in details are removed too.

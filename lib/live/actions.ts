@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createMeetingToken, createRoom, deleteRoom, isLiveConfigured, roomUrl } from "@/lib/live/daily";
 import { effectiveLiveStatus, LIVE_GRACE_MINUTES } from "@/lib/live/status";
+import { AGE_GATE_MESSAGE, isAgeCleared } from "@/lib/age-gate";
 
 // Every live-class action lives here. Each one works out WHO is asking (teacher /
 // student / admin) from their login, checks the rule for that action, and only
@@ -25,6 +26,8 @@ async function loadContext(sessionId: string) {
 
   const { data: profile } = await supabase.from("profiles").select("role, full_name").eq("id", user.id).single();
   if (!profile) return { ok: false, error: "Your profile couldn't be found." } as const;
+  // Age check / guardian approval (Stage 2). Covers start, end, join and remove alike.
+  if (!(await isAgeCleared(user.id, profile.role))) return { ok: false, error: AGE_GATE_MESSAGE } as const;
 
   const admin = createAdminClient();
   const { data: session } = await admin.from("live_sessions").select("*").eq("id", sessionId).maybeSingle();

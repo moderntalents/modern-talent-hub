@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { initiateStkPush, isMpesaConfigured } from "@/lib/mpesa";
 import { normalizeKenyanPhone as normalizePhone } from "@/lib/phone";
 import { arePaymentsEnabled } from "@/lib/settings";
+import { AGE_GATE_MESSAGE, isAgeCleared } from "@/lib/age-gate";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -13,6 +14,10 @@ export async function POST(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  }
+
+  if (!(await isAgeCleared(user.id))) {
+    return NextResponse.json({ error: AGE_GATE_MESSAGE }, { status: 403 });
   }
 
   try {

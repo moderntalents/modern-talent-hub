@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { AGE_GATE_MESSAGE, isAgeCleared } from "@/lib/age-gate";
 
 export async function submitAssignment(params: {
   assignmentId: string;
@@ -14,6 +15,7 @@ export async function submitAssignment(params: {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Sign in required.");
+  if (!(await isAgeCleared(user.id))) throw new Error(AGE_GATE_MESSAGE);
 
   const { error } = await supabase.from("assignment_submissions").upsert(
     {

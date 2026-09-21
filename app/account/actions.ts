@@ -120,6 +120,10 @@ async function scrubAccount(admin: Admin, userId: string) {
   // Published lessons are kept, no longer linked to this person.
   must(await admin.from("lessons").update({ teacher_id: null }).eq("teacher_id", userId), "detach lessons");
   must(await admin.from("student_profiles").delete().eq("profile_id", userId), "remove student details");
+  // Stage 2: the profile row stays on this path, so the date of birth and guardian details
+  // (which would otherwise disappear with it) are removed explicitly.
+  must(await admin.from("guardian_consent_requests").delete().eq("profile_id", userId), "remove guardian requests");
+  must(await admin.from("age_records").delete().eq("profile_id", userId), "remove age record");
   // The financial ledger stays, but the personal numbers in it do not.
   must(
     await admin.from("withdrawal_requests").update({ destination: REMOVED, notes: null }).eq("teacher_id", userId),

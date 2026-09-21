@@ -57,6 +57,7 @@ supabase/
   migrations/0007_fix_is_admin_recursion.sql        fixes "stack depth limit exceeded" on admin writes
   migrations/0008_live_sessions.sql                 live classes: live_sessions + participants
   migrations/0009_delete_user_identities.sql        account deletion: removes Google identities/sessions
+  migrations/0010_age_and_guardian_consent.sql      age check + parent/guardian consent for under-18s
   seed.sql                  CBC subjects seed data
 legacy-prototype/           the original static clickable prototype (archived)
 capacitor.config.ts         Android packaging config (see section 5)
@@ -67,7 +68,7 @@ capacitor.config.ts         Android packaging config (see section 5)
 Supabase Auth exists on a fresh project, but **the app's tables and functions do not**. On an
 empty project, open the Supabase **SQL Editor** for the *same project whose URL is
 `NEXT_PUBLIC_SUPABASE_URL` in Vercel*, paste all of [`supabase/setup-all.sql`](supabase/setup-all.sql)
-and run it **once**. (It is `0001`→`0009` + the seed, in order.) Signs of a missing setup: login
+and run it **once**. (It is `0001`→`0010` + the seed, in order.) Signs of a missing setup: login
 loops back to `/login`, registration/password-reset return "database setup is incomplete".
 
 ## Live classes (lessons and activities)
@@ -113,9 +114,48 @@ activity "is live" simply because it has one, so existing lessons/activities are
   already set up from an older `setup-all.sql` must run `0009_delete_user_identities.sql` once; until
   then a scrub-path deletion fails safely (before changing anything) and can be retried. A plain hard
   delete needs no 0009 (deleting the login removes its identities).
-- **Not done yet (Stage 2/3):** age screen, parental consent and child-account restrictions for the
-  mixed audience; the Privacy Policy's "Children" section describes today's behaviour and must be
-  updated when those exist.
+- **Stage 3 (not done yet):** live-class safety for children (for example camera off by default) and
+  the Daily/YouTube terms. The Privacy Policy's live-class wording describes today's behaviour and must
+  be updated when that changes.
+
+## Age check and parent/guardian consent (Stage 2)
+
+Kenya's Data Protection Act treats under-18s as children, so **anyone under 18 needs a parent or
+guardian's approval before using the app.** Tables and function: migration `0010`
+(`age_records`, `guardian_consent_requests`, `decide_guardian_consent`).
+
+- **Signup** (`/signup`) asks everyone for a date of birth first (three empty drop-downs, no age hint). The
+  server works out the age from the date; the browser's idea of age is never trusted
+  (`app/api/auth/verify-registration/route.ts`, `lib/age.ts`, `lib/consent.ts`). Under 18: a guardian email is
+  required (it may not be the child's own address) and the guardian is emailed a link. Under 13: no phone
+  number is asked or kept and the Google button is hidden. Teacher accounts are 18+.
+- **Google sign-in and existing accounts** have no date of birth, so at next login they are sent to
+  `/age-check`. An under-13 who signed in with Google on a brand-new account has that account removed
+  entirely and is sent to email sign-up (`purgeUnusedStudent`).
+- **The gate** (`lib/age-gate.ts`): the student and teacher layouts redirect to `/age-check` or
+  `/consent-pending` until the person is cleared (admins exempt). Because pages are not the only way in, the
+  server paths a person can call directly check it too: enrolling, submitting an assignment, joining or
+  hosting a live class (`loadContext` in `lib/live/actions.ts`) and the M-Pesa payment route.
+- **Consent link** (`/guardian/consent?token=…`, public): 256-bit random token, only its SHA-256 hash is stored,
+  valid 7 days, only the newest email works. Opening the link shows the details; approving or declining
+  needs a button press (a POST), so email scanners and link previews cannot approve by accident. The decision
+  is recorded atomically by `decide_guardian_consent`. A declined account that was never used is deleted;
+  one with any activity stays locked.
+- **Waiting screen** (`/consent-pending`): resend the email (max 5 an hour), change the guardian's address,
+  delete the account, sign out.
+- **Nobody can approve themselves:** `age_records` and `guardian_consent_requests` have no client write
+  policies (server code only), and `age_records` is insert-only in the app, so a date of birth cannot be
+  "corrected" later to skip consent (mistakes go through support).
+- **Deleting an account** removes the date of birth and guardian records too (cascade on a normal delete;
+  explicit lines in the "keep payment records" path in `app/account/actions.ts`).
+- **Rolling it out:** run `0010_age_and_guardian_consent.sql` in production **before** deploying this code,
+  otherwise new sign-ups fail (they record a date of birth).
+- **On deploy day:** set `LEGAL_LAST_UPDATED` in `lib/legal.ts` to that day's date (it is shown on the Privacy
+  Policy, the delete page and the guardian pages). It is deliberately not pre-dated.
+- **Known limits:** email consent is a reasonable-effort check, not proof (a child could type a second
+  address of their own as the "parent"); it is not identity verification. Accounts still waiting for consent
+  are not automatically deleted after a time. Teacher server actions rely on the teacher layout's age gate plus
+  `loadContext` for live classes. Have a lawyer review the consent wording before launch.
 
 ## Who needs approval
 
