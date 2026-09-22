@@ -1,8 +1,9 @@
 // The messaging flows. Every function here assumes the CALLER has already been identified from
 // their login (see lib/messages/actions.ts) — `userId` is never taken from the browser — and that
-// they are age-cleared. The rules about WHO may talk to WHOM live in the database
-// (supabase/migrations/0011_messaging.sql) and are re-checked there on every call; this file adds
-// what a database cannot: rate limits, and inspecting the uploaded file's real bytes.
+// they are age-cleared and have messaging permission (0014). The rules about WHO may talk to WHOM
+// live in the database (supabase/migrations/0011_messaging.sql, gated by 0014) and are re-checked
+// there on every call; this file adds what a database cannot: rate limits, and inspecting the
+// uploaded file's real bytes.
 //
 // It takes the service-role client as a parameter (rather than creating one) so the tests can run
 // the same code against a real Postgres.

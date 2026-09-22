@@ -89,6 +89,7 @@ describe("messaging rules (pure)", () => {
   test("database rule failures turn into plain sentences, and unknown errors reveal nothing", () => {
     assert.match(friendlyMessagingError("messaging:closed"), /closed/);
     assert.match(friendlyMessagingError("error: messaging:not_cleared (P0001)"), /age check/);
+    assert.match(friendlyMessagingError("error: messaging:not_permitted (P0001)"), /parent or guardian's permission/);
     assert.equal(friendlyMessagingError("relation \"messages\" does not exist"), "Something went wrong. Please try again.");
     assert.equal(friendlyMessagingError(null), "Something went wrong. Please try again.");
     assert.equal(friendlyMessagingError("messaging:made_up_reason"), "Something went wrong. Please try again.");

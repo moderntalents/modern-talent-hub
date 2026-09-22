@@ -148,7 +148,8 @@ describe("who may START a conversation", () => {
   });
 
   test("both people must be age-cleared (Stage 2): pending, declined and missing records are all refused", async () => {
-    assert.ok(await fromLesson(ID.S2, ID.L1), "under-18 with guardian approval is allowed");
+    assert.ok(await fromLesson(ID.S2, ID.L1), "under-18 with guardian approval (account + messaging) is allowed");
+    await assert.rejects(fromLesson(ID.S8, ID.L1), /messaging:not_permitted/); // account approved, messaging not (0014)
     await assert.rejects(fromLesson(ID.S3, ID.L1), NOT_CLEARED); // guardian approval pending
     await assert.rejects(fromLesson(ID.S6, ID.L1), NOT_CLEARED); // guardian declined
     await assert.rejects(fromLesson(ID.S4, ID.L1), NOT_CLEARED); // no age record yet

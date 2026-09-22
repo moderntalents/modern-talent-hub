@@ -7,7 +7,19 @@ export const metadata: Metadata = { title: "Thank you — Modern Talent Hub", ro
 const MESSAGES: Record<string, { title: string; body: string }> = {
   approved: {
     title: "Thank you — approved",
-    body: "The young person can now use Modern Talent Hub. They just need to press “check again” on their waiting screen, or sign in again.",
+    body: "The young person can now use Modern Talent Hub. They just need to press “check again” on their waiting screen, or sign in again. Private messaging stays off; they can ask you for it separately later.",
+  },
+  "approved-messaging": {
+    title: "Thank you — approved",
+    body: "The young person can now use Modern Talent Hub, including private messages with their teachers. They just need to press “check again” on their waiting screen, or sign in again.",
+  },
+  "messaging-approved": {
+    title: "Thank you — messaging allowed",
+    body: `Private messages with their teachers are now switched on. You can switch messaging off again at any time by emailing ${CONTACT_EMAIL}.`,
+  },
+  "messaging-declined": {
+    title: "Messaging not allowed",
+    body: "Private messaging stays off. Nothing else about their account has changed — they can keep using Modern Talent Hub as before.",
   },
   "declined-removed": {
     title: "Declined — account removed",

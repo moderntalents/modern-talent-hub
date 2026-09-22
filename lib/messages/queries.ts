@@ -5,7 +5,8 @@ import { isUuid, type MessageKind } from "@/lib/messages/rules";
 
 // What the messaging pages read. Conversations and messages are read AS THE SIGNED-IN PERSON, so
 // row-level security applies: someone only ever gets back conversations they are one of the two
-// people in (and only while both are age-cleared). Nothing here can widen that.
+// people in (and only while both may use messaging — see messaging_cleared() in 0014). Nothing here
+// can widen that.
 
 /**
  * Display names for people the caller already has a conversation with. Teachers cannot read student
@@ -125,7 +126,9 @@ export async function getThread(conversationId: string, myId: string, role: "stu
         ? null
         : status === "not_cleared"
           ? "Messaging is paused until the age check or guardian approval is complete."
-          : "This conversation is closed for new messages. You can still read it.",
+          : status === "not_permitted"
+            ? "Messaging is paused: a parent or guardian's permission for private messages is needed."
+            : "This conversation is closed for new messages. You can still read it.",
     messages: (rows ?? [])
       .reverse()
       .map((m) => ({

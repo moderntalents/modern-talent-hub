@@ -9,12 +9,13 @@ export const ID = {
   T4: "aaaaaaaa-0000-4000-8000-000000000004", // approved, only a DRAFT lesson and activity A2 with no subscribers
   // students
   S1: "bbbbbbbb-0000-4000-8000-000000000001", // adult, no consent needed; active subscriber of A1
-  S2: "bbbbbbbb-0000-4000-8000-000000000002", // under 18, guardian approved
+  S2: "bbbbbbbb-0000-4000-8000-000000000002", // under 18, guardian approved the account AND messaging (v2 wording)
   S3: "bbbbbbbb-0000-4000-8000-000000000003", // under 18, guardian approval PENDING
   S4: "bbbbbbbb-0000-4000-8000-000000000004", // no age record at all
   S5: "bbbbbbbb-0000-4000-8000-000000000005", // adult; subscription to A1 exists but is pending_payment
   S6: "bbbbbbbb-0000-4000-8000-000000000006", // under 18, guardian DECLINED
   S7: "bbbbbbbb-0000-4000-8000-000000000007", // adult, unrelated to everyone (an outsider)
+  S8: "bbbbbbbb-0000-4000-8000-000000000008", // under 18, guardian approved the account but NOT messaging
   // admin
   ADMIN: "cccccccc-0000-4000-8000-000000000001",
   // content
@@ -45,6 +46,7 @@ export async function seedWorld(db: PGlite): Promise<void> {
     ${user(ID.S5, "student", "Student Five")}
     ${user(ID.S6, "student", "Student Six")}
     ${user(ID.S7, "student", "Student Seven")}
+    ${user(ID.S8, "student", "Student Eight")}
     ${user(ID.ADMIN, "student", "Admin Person")}
     update profiles set role = 'admin' where id = '${ID.ADMIN}';
 
@@ -60,7 +62,14 @@ export async function seedWorld(db: PGlite): Promise<void> {
       ('${ID.S3}', '2012-01-01', 'g3@test.invalid', 'pending'),
       ('${ID.S5}', '1990-01-01', null, 'not_required'),
       ('${ID.S6}', '2012-01-01', 'g6@test.invalid', 'declined'),
-      ('${ID.S7}', '1990-01-01', null, 'not_required');
+      ('${ID.S7}', '1990-01-01', null, 'not_required'),
+      ('${ID.S8}', '2012-01-01', 'g8@test.invalid', 'granted');
+
+    -- 0014: S2's guardian also allowed private messaging, on wording that covers it.
+    update age_records
+    set guardian_messaging_allowed = true, guardian_messaging_status = 'granted',
+        guardian_messaging_version = 'guardian-v2', guardian_messaging_decided_at = now()
+    where profile_id = '${ID.S2}';
 
     insert into subjects (id, name) values ('${ID.SUBJECT}', 'Mathematics');
     insert into lessons (id, subject_id, teacher_id, title, status) values

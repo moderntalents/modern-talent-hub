@@ -39,7 +39,8 @@ export default function PrivacyPolicyPage() {
         </li>
         <li>Your date of birth, so we know whether a parent or guardian needs to give permission.</li>
         <li>
-          If you are under 18: your parent or guardian’s email address, and a record of whether they approved or declined
+          If you are under 18: your parent or guardian’s email address, a record of whether they approved or declined your
+          account, and — separately — whether they allowed private messaging, with the version of the wording they saw
           (see “Children”).
         </li>
         <li>Whether you are a student, teacher or administrator.</li>
@@ -73,8 +74,8 @@ export default function PrivacyPolicyPage() {
           not record live classes.
         </li>
         <li>
-          Live classes have a group text chat. Your name is shown to the other people in the class. We do not offer private
-          messages between users.
+          Live classes have a group text chat. Your name is shown to the other people in the class. Private messages with
+          your teachers are separate (see “Messages” and “Children”).
         </li>
       </UL>
       <P><strong>Payments</strong></P>
@@ -154,9 +155,15 @@ export default function PrivacyPolicyPage() {
         <li>We show no advertising, we do not sell children’s information, and we do not track children for marketing.</li>
         <li>We do not collect a child’s location, contacts or advertising ID.</li>
         <li>
-          Once a parent or guardian has approved their account, a student can send private messages — with an optional PDF
-          attachment — only to their own teachers and coaches, never to other students. Those messages are visible only to
-          the student and that teacher.
+          <strong>Private messaging needs its own permission.</strong> Approving the account does not switch on messaging.
+          For anyone under 18, a parent or guardian must separately choose to allow private messages; until they do, messaging
+          is off and the rest of the account works as normal. Saying no, or later switching messaging off, never changes the
+          account approval and never deletes the account. Permissions given before we introduced messaging do not cover it.
+          From their 18th birthday, a student with an approved account can use messaging automatically.
+        </li>
+        <li>
+          With messaging allowed, a student can send private messages — with an optional PDF attachment — only to their own
+          teachers and coaches, never to other students. Those messages are visible only to the student and that teacher.
         </li>
         <li>
           When you join a live class you first see a screen to check your camera and microphone. Your microphone starts
@@ -164,7 +171,7 @@ export default function PrivacyPolicyPage() {
         </li>
         <li>
           <strong>Parents and guardians:</strong> you can ask us at any time to show you what we hold about your child, to correct it,
-          or to delete your child’s account and data, or to withdraw your permission — email us at{" "}
+          or to delete your child’s account and data, or to withdraw your permission for the account or for messaging only — email us at{" "}
           <a href={`mailto:${CONTACT_EMAIL}`} className="font-semibold text-brand-cyan-deep">{CONTACT_EMAIL}</a> from the email
           address on the account or the parent or guardian address we have on record, or see “Deleting your account”. If you believe a child has given us information without
           your permission, tell us and we will delete it.
@@ -179,8 +186,8 @@ export default function PrivacyPolicyPage() {
           account, the whole conversation — every message and file in it — is deleted for both people.
         </li>
         <li>
-          Your date of birth, and a parent or guardian’s email address and their answer, are kept only while your account
-          exists and are deleted with it.
+          Your date of birth, and a parent or guardian’s email address and their answers (for the account and for
+          messaging), are kept only while your account exists and are deleted with it.
         </li>
         <li>
           Payment and payout records are kept for as long as tax and accounting law requires. When you delete your account,

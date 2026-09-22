@@ -60,6 +60,7 @@ supabase/
   migrations/0009_delete_user_identities.sql        account deletion: removes Google identities/sessions
   migrations/0010_age_and_guardian_consent.sql      age check + parent/guardian consent for under-18s
   migrations/0011_messaging.sql                     student ↔ teacher messages + private PDF bucket
+  migrations/0014_messaging_guardian_consent.sql    separate guardian permission for messaging (under-18s)
   seed.sql                  CBC subjects seed data
 legacy-prototype/           the original static clickable prototype (archived)
 capacitor.config.ts         Android packaging config (see section 5)
@@ -70,7 +71,8 @@ capacitor.config.ts         Android packaging config (see section 5)
 Supabase Auth exists on a fresh project, but **the app's tables and functions do not**. On an
 empty project, open the Supabase **SQL Editor** for the *same project whose URL is
 `NEXT_PUBLIC_SUPABASE_URL` in Vercel*, paste all of [`supabase/setup-all.sql`](supabase/setup-all.sql)
-and run it **once**. (It is `0001`→`0010` + the seed, in order.) Signs of a missing setup: login
+and run it **once**. (It is `0001`→`0011` + the seed, then `0014`, in order. `0012`/`0013` belong to the
+separate M-Pesa work and are not part of this file on this branch.) Signs of a missing setup: login
 loops back to `/login`, registration/password-reset return "database setup is incomplete".
 
 ## Live classes (lessons and activities)
@@ -170,7 +172,8 @@ code in `lib/messages/`, `components/messages/`, `app/{student,teacher}/messages
   ("Message teacher" on the lesson page) or of an *activity they have an active subscription to*. A teacher
   can start one only with a student who has an active subscription to one of their activities; otherwise a
   teacher replies to students who wrote first. There is no student-to-student messaging and no other
-  route. Both people must be age-cleared (Stage 2) and the teacher approved. If the relationship ends
+  route. Both people must be age-cleared (Stage 2), both must have **messaging permission** (see the next
+  section) and the teacher approved. If the relationship ends
   (lesson unpublished, subscription cancelled, approval withdrawn) the thread becomes **read-only**.
 - **Homework.** A teacher can tick "Send as homework" (a *Homework* badge); a student attaching a PDF is
   offered "This is my completed homework" (a *Completed homework* badge). Each student–teacher pair has one
@@ -203,6 +206,41 @@ code in `lib/messages/`, `components/messages/`, `app/{student,teacher}/messages
   and the pure rules (`messages-rules.test.ts`).
 - **Not built (yet):** unread counts / email notifications (threads refresh every ~12 s), a scheduled
   cleanup of uploads that were never sent, reporting/blocking, and an administrator safeguarding view.
+
+## Guardian permission for messaging (under-18s)
+
+The Stage 2 consent page (wording **`guardian-v1`**) told parents there were *no private messages*, so a
+v1 approval can never count as permission for messaging. Migration
+**`0014_messaging_guardian_consent.sql`** adds a separate messaging permission. Code: `lib/consent-versions.ts`,
+`lib/messaging-permission.ts` (pure rule), `lib/messaging-gate.ts`, `lib/consent.ts`,
+`app/guardian/consent/`, `app/guardian/messaging/`, `app/student/messages/`.
+
+- **The rule** (`messaging_cleared()` in SQL, `messagingState()` in TypeScript — the same logic):
+  platform consent must be in place (`not_required` or `granted`), **and** the person is **18 or over today**
+  (Kenya date, `Africa/Nairobi`) **or** a guardian allowed messaging on wording that covers it
+  (`guardian-v2`). Age is worked out whenever access is checked — no birthday job. From their 18th birthday a
+  student is allowed automatically, **even if a guardian earlier declined or withdrew messaging**. Someone born on
+  29 February turns 18 on 1 March in a non-leap year (same rule as `lib/age.ts`).
+- **Existing data:** every row starts with messaging **off**. Existing under-18 students keep using the app but
+  must ask for messaging. Adults (students and teachers) are unaffected.
+- **How a guardian allows it:** (1) new platform requests are sent with `guardian-v2` wording, and the consent
+  page has an optional "Allow private messages" choice (default: don't allow); (2) an approved under-18 opens
+  **Messages** and presses **Ask my parent to allow messaging** — the email goes only to the guardian **on record**
+  (max 3 a day), to `/guardian/messaging?token=…`. Links follow the same rules as Stage 2 (hashed 256-bit token,
+  7 days, single use, button press required).
+- **Declining or withdrawing** only switches messaging off. It never changes `consent_status` and never deletes
+  the account. Withdrawal is done by support when a guardian asks (`select withdraw_guardian_messaging_consent('<profile id>')`
+  in the SQL Editor); both people lose access to the conversation straight away (it is hidden, not deleted).
+- **Enforced in the database:** `caller_can_read_conversation`, `_open_conversation` and `messaging_can_send`
+  now use `messaging_cleared()` (their other rules are unchanged). A trigger refuses messaging permission
+  recorded against any wording that doesn't cover messaging. All new functions are service-role only;
+  `guardian_consent_versions` has no client access. `decide_guardian_consent()`, `age_cleared()` and
+  `consent_status` are unchanged.
+- **Rolling it out:** run `0014` **before** deploying this code (the new pages call the new functions). The
+  older code keeps working against it (new columns have defaults), but existing under-18s lose messaging the
+  moment `0014` runs, and the older screens only say the thread is unavailable — so deploy the code soon after.
+- **Tests:** `messaging-consent-db.test.ts` (SQL rules, v1/v2, 18+ override, 29 Feb, Nairobi midnight,
+  SQL/TypeScript agreement), `migration-0014.test.ts` (what 0014 may and may not change).
 
 ## Who needs approval
 

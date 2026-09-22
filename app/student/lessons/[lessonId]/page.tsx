@@ -9,12 +9,15 @@ import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
 import { isVideoFile } from "@/lib/uploads";
 import { Card } from "@/components/ui/Card";
 import { StartConversationButton } from "@/components/messages/StartConversationButton";
+import { MessagingLockedNote } from "@/components/messages/MessagingLockedNote";
+import { getMessagingState } from "@/lib/messaging-gate";
 import { AssignmentSubmitForm } from "./AssignmentSubmitForm";
 
 export default async function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
   const { lessonId } = await params;
   const session = await getSessionProfile();
   const supabase = await createClient();
+  const canMessage = (await getMessagingState(session!.user.id)).kind === "allowed";
 
   const [{ data: lesson }, { data: materials }, { data: assignment }] = await Promise.all([
     supabase.from("lessons").select("*, subjects(name)").eq("id", lessonId).single(),
@@ -69,12 +72,16 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
             <p className="text-sm font-semibold">Questions or homework?</p>
             <p className="text-xs text-ink-faint">Message the teacher and attach your work as a PDF.</p>
           </div>
-          <StartConversationButton
-            target={{ kind: "lesson", lessonId: lesson.id }}
-            label="Message teacher"
-            basePath="/student/messages"
-            variant="outline"
-          />
+          {canMessage ? (
+            <StartConversationButton
+              target={{ kind: "lesson", lessonId: lesson.id }}
+              label="Message teacher"
+              basePath="/student/messages"
+              variant="outline"
+            />
+          ) : (
+            <MessagingLockedNote />
+          )}
         </Card>
       )}
 
