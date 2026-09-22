@@ -169,6 +169,16 @@ guardian's approval before using the app.** Tables and function: migration `0010
   Revoking approval sends the teacher back to pending immediately. The activation-fee step (when
   payments are ON) comes **after** approval.
 - **Admins:** unchanged; created only with SQL (see below).
+- **Who can read or change a teacher's record** (`teacher_profiles`, migration **`0012`**): a teacher can read
+  and edit only their **own** row (bio, specialty, payout details); admins can read all rows; the public can
+  read **nothing** (the row holds the wallet balance and M-Pesa/bank details). Only an **admin** can change
+  `approved`, and only the **server** (payment/payout triggers, service role) can change `wallet_balance` —
+  not a teacher, and not even an admin session. Nobody can insert or delete a row from a browser (signup
+  creates it; deleting the login removes it). Before `0012`, a teacher could approve themselves and forge
+  a wallet balance from a browser, and anyone with the public key could read every teacher's payout details.
+  Run `0012` on any database set up from an older `setup-all.sql`; it is safe to run more than once.
+  `npm test` includes `tests/teacher-profiles-security.test.ts`, which proves the attacks fail and every
+  legitimate flow (admin approval, payments, payouts, signup, account deletion) still works.
 
 ## Password reset ("Forgot your password?")
 
