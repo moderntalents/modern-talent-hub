@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/teacher", label: "Home", icon: "🏠" },
   { href: "/teacher/lessons", label: "Lessons", icon: "📘" },
   { href: "/teacher/activities", label: "Activities", icon: "🎯" },
+  { href: "/teacher/messages", label: "Messages", icon: "✉️" },
   { href: "/teacher/wallet", label: "Wallet", icon: "💰" },
 ];
 

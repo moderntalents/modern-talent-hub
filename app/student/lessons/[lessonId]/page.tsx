@@ -8,6 +8,7 @@ import { StudentLiveCard } from "@/components/live/StudentLiveCard";
 import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
 import { isVideoFile } from "@/lib/uploads";
 import { Card } from "@/components/ui/Card";
+import { StartConversationButton } from "@/components/messages/StartConversationButton";
 import { AssignmentSubmitForm } from "./AssignmentSubmitForm";
 
 export default async function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
@@ -61,6 +62,21 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
         <h1 className="font-head text-xl font-extrabold">{lesson.title}</h1>
         {lesson.description && <p className="mt-1 text-sm text-ink-soft">{lesson.description}</p>}
       </div>
+
+      {lesson.teacher_id && (
+        <Card className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">Questions or homework?</p>
+            <p className="text-xs text-ink-faint">Message the teacher and attach your work as a PDF.</p>
+          </div>
+          <StartConversationButton
+            target={{ kind: "lesson", lessonId: lesson.id }}
+            label="Message teacher"
+            basePath="/student/messages"
+            variant="outline"
+          />
+        </Card>
+      )}
 
       {live && (
         <StudentLiveCard

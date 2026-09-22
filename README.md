@@ -45,6 +45,7 @@ components/                shared UI (brand-styled) + nav shell + file upload + 
 lib/
   supabase/                 browser / server / admin (service-role) Supabase clients
   auth.ts                   session + role-guard helpers
+  messages/                 student ↔ teacher messaging (rules, service, actions; see Messaging section)
   mpesa.ts                  Daraja API integration (STK push; B2C payout stubbed, documented)
   constants.ts              CBC subjects, marketplace categories, revenue split
 supabase/
@@ -58,6 +59,7 @@ supabase/
   migrations/0008_live_sessions.sql                 live classes: live_sessions + participants
   migrations/0009_delete_user_identities.sql        account deletion: removes Google identities/sessions
   migrations/0010_age_and_guardian_consent.sql      age check + parent/guardian consent for under-18s
+  migrations/0011_messaging.sql                     student ↔ teacher messages + private PDF bucket
   seed.sql                  CBC subjects seed data
 legacy-prototype/           the original static clickable prototype (archived)
 capacitor.config.ts         Android packaging config (see section 5)
@@ -147,7 +149,7 @@ guardian's approval before using the app.** Tables and function: migration `0010
   policies (server code only), and `age_records` is insert-only in the app, so a date of birth cannot be
   "corrected" later to skip consent (mistakes go through support).
 - **Deleting an account** removes the date of birth and guardian records too (cascade on a normal delete;
-  explicit lines in the "keep payment records" path in `app/account/actions.ts`).
+  explicit lines in the "keep payment records" path in `app/account/actions.ts`). Messaging conversations, messages and PDFs are removed on both paths (see below).
 - **Rolling it out:** run `0010_age_and_guardian_consent.sql` in production **before** deploying this code,
   otherwise new sign-ups fail (they record a date of birth).
 - **On deploy day:** set `LEGAL_LAST_UPDATED` in `lib/legal.ts` to that day's date (it is shown on the Privacy
@@ -156,6 +158,51 @@ guardian's approval before using the app.** Tables and function: migration `0010
   address of their own as the "parent"); it is not identity verification. Accounts still waiting for consent
   are not automatically deleted after a time. Teacher server actions rely on the teacher layout's age gate plus
   `loadContext` for live classes. Have a lawyer review the consent wording before launch.
+
+## Messaging and PDF homework (student ↔ teacher)
+
+Students and teachers can message each other, with an optional **PDF attachment** (homework
+instructions from a teacher, completed homework from a student). Migration **`0011_messaging.sql`**;
+code in `lib/messages/`, `components/messages/`, `app/{student,teacher}/messages/` and
+`app/api/messages/attachment/[messageId]/route.ts`. Run the migration **before** deploying the code.
+
+- **Who can talk to whom.** A student can start a conversation with the teacher of a *published lesson*
+  ("Message teacher" on the lesson page) or of an *activity they have an active subscription to*. A teacher
+  can start one only with a student who has an active subscription to one of their activities; otherwise a
+  teacher replies to students who wrote first. There is no student-to-student messaging and no other
+  route. Both people must be age-cleared (Stage 2) and the teacher approved. If the relationship ends
+  (lesson unpublished, subscription cancelled, approval withdrawn) the thread becomes **read-only**.
+- **Homework.** A teacher can tick "Send as homework" (a *Homework* badge); a student attaching a PDF is
+  offered "This is my completed homework" (a *Completed homework* badge). Each student–teacher pair has one
+  thread, so the conversation and its files always stay with the right two people. The existing
+  per-lesson assignment upload/grading is unchanged.
+- **Reading is locked to the two people.** `conversations` and `messages` have **read-only** row-level
+  security for the two participants, only while both are age-cleared. There are **no** insert/update/delete
+  policies and table privileges are revoked, so nothing can be written from a browser. **Admins have no
+  in-app access** to messages or files.
+- **Writing goes through the server.** Server actions (`lib/messages/actions.ts`) identify the caller from
+  the login, then call SQL functions with the service role (`start_conversation_from_lesson`,
+  `start_conversation_from_activity`, `start_conversation_as_teacher`, `send_message`). The functions
+  re-check every rule in the database, so an application bug cannot open a conversation the rules forbid.
+  Sending is rate limited (30 messages / 10 min, 20 upload links / hour, 30 conversation starts / hour).
+- **PDFs.** Private bucket `message-attachments`: 10 MB, `application/pdf` only (enforced by Storage), and
+  **no storage policies at all**, so a browser can't list, read, upload or delete there. Upload is
+  server-controlled: the server checks the person may send, then issues a *one-time* upload link for a path
+  **it** chooses (`<conversation id>/<random>.pdf`). On send, the server downloads the object and checks
+  its real size (1 byte – 10 MB) and that it starts with `%PDF-`; anything else is deleted. A file can
+  back only one message, and a failed send never deletes a file another message uses.
+- **Downloads.** `/api/messages/attachment/<message id>` reads the message *as the signed-in person* (row-level
+  security) and only then redirects to a signed link that lasts **60 seconds**. Changing the id or having no
+  part in the conversation gives "not found"; there is no way to get a link from a file path.
+- **Deleting an account** removes every conversation the person is in — messages and files, for **both**
+  people — on both paths (normal delete and the "keep payment records" scrub), before anything else is
+  deleted. If a file can't be removed the deletion stops and can be retried.
+- **Tests.** `npm test` runs the suite in `tests/` against a real in-process Postgres (PGlite) with **all
+  the repo's migrations applied**: database rules and row-level security (`messaging-db.test.ts`), the
+  service code — uploads, fake PDFs, size lies, path tricks, downloads, deletion (`messaging-service.test.ts`)
+  and the pure rules (`messages-rules.test.ts`).
+- **Not built (yet):** unread counts / email notifications (threads refresh every ~12 s), a scheduled
+  cleanup of uploads that were never sent, reporting/blocking, and an administrator safeguarding view.
 
 ## Who needs approval
 

@@ -602,6 +602,71 @@ export interface Database {
           },
         ];
       };
+      // 0011_messaging.sql — read by the two people in a conversation; written by server code only.
+      conversations: {
+        Row: {
+          id: string;
+          student_id: string;
+          teacher_id: string;
+          created_at: string;
+          last_message_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["conversations"]["Row"]> & {
+          student_id: string;
+          teacher_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["conversations"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "conversations_student_id_fkey";
+            columns: ["student_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "conversations_teacher_id_fkey";
+            columns: ["teacher_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      messages: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          sender_id: string;
+          kind: "message" | "homework" | "submission";
+          body: string;
+          attachment_path: string | null;
+          attachment_name: string | null;
+          attachment_size: number | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["messages"]["Row"]> & {
+          conversation_id: string;
+          sender_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["messages"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey";
+            columns: ["conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "conversations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey";
+            columns: ["sender_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -631,6 +696,47 @@ export interface Database {
       decide_guardian_consent: {
         Args: { p_token_hash: string; p_decision: string };
         Returns: "approved" | "declined" | "used" | "expired" | "invalid";
+      };
+      // Server-only, from 0011_messaging.sql. Failures are raised as "messaging:<reason>".
+      start_conversation_from_lesson: {
+        Args: { p_student: string; p_lesson: string };
+        Returns: string;
+      };
+      start_conversation_from_activity: {
+        Args: { p_student: string; p_activity: string };
+        Returns: string;
+      };
+      start_conversation_as_teacher: {
+        Args: { p_teacher: string; p_student: string };
+        Returns: string;
+      };
+      messaging_can_send: {
+        Args: { p_user: string; p_conversation: string };
+        Returns: "ok" | "not_found" | "not_cleared" | "closed";
+      };
+      send_message: {
+        Args: {
+          p_sender: string;
+          p_conversation: string;
+          p_body: string;
+          p_kind: "message" | "homework" | "submission";
+          p_attachment_path: string | null;
+          p_attachment_name: string | null;
+          p_attachment_size: number | null;
+        };
+        Returns: string;
+      };
+      attachment_in_use: {
+        Args: { p_path: string };
+        Returns: boolean;
+      };
+      messaging_conversation_ids: {
+        Args: { p_user: string };
+        Returns: string[];
+      };
+      delete_user_messages: {
+        Args: { p_user: string };
+        Returns: number;
       };
     };
   };

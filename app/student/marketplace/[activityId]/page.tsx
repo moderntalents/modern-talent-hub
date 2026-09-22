@@ -8,6 +8,7 @@ import { StudentLiveCard } from "@/components/live/StudentLiveCard";
 import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
 import { BILLING_LABELS, formatKes } from "@/lib/constants";
 import { Card, Badge } from "@/components/ui/Card";
+import { StartConversationButton } from "@/components/messages/StartConversationButton";
 import { SubscribeForm } from "./SubscribeForm";
 
 export default async function ActivityDetailPage({
@@ -78,6 +79,21 @@ export default async function ActivityDetailPage({
           />
         </div>
       </Card>
+
+      {enrolled && (
+        <Card className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">Questions or homework?</p>
+            <p className="text-xs text-ink-faint">Message your coach and attach your work as a PDF.</p>
+          </div>
+          <StartConversationButton
+            target={{ kind: "activity", activityId: activity.id }}
+            label="Message coach"
+            basePath="/student/messages"
+            variant="outline"
+          />
+        </Card>
+      )}
 
       {live && (
         <StudentLiveCard
