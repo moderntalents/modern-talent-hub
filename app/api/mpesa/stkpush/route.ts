@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { initiateStkPush, isMpesaConfigured } from "@/lib/mpesa";
+import { initiateStkPush, isMpesaConfigured, validatePaymentAmount, TRANSACTION_DESC_MAX_LENGTH } from "@/lib/mpesa";
 import { normalizeKenyanPhone as normalizePhone } from "@/lib/phone";
 import { arePaymentsEnabled } from "@/lib/settings";
 import { AGE_GATE_MESSAGE, isAgeCleared } from "@/lib/age-gate";
@@ -81,6 +81,18 @@ export async function POST(request: Request) {
     );
   }
 
+  // Fail closed on a bad price rather than letting an invalid amount reach
+  // Daraja (or get silently rounded): this is money, not a display value.
+  try {
+    validatePaymentAmount(activity.price);
+  } catch (err) {
+    console.error(`[stkpush] activity ${activity.id} has an invalid price (${activity.price}):`, err);
+    return NextResponse.json(
+      { error: "This activity's price is invalid. Please contact support." },
+      { status: 500 },
+    );
+  }
+
   // Reuse an existing pending/active subscription row for this student+activity
   // rather than creating duplicates (subscriptions has a unique constraint).
   const { data: subscription, error: subError } = await supabase
@@ -119,6 +131,9 @@ export async function POST(request: Request) {
       amount: activity.price,
       provider: "mpesa",
       status: "pending",
+      // Recorded so the callback can later verify the payer's phone matches
+      // the number the STK prompt was actually sent to.
+      phone: phoneNumber,
     })
     .select()
     .single();
@@ -135,13 +150,24 @@ export async function POST(request: Request) {
       phoneNumber,
       amount: activity.price,
       accountReference: `MTH-${activity.id.slice(0, 8)}`,
-      transactionDesc: activity.title,
+      // activity.title is free text with no length limit in the app; Daraja's
+      // TransactionDesc is capped, so it's truncated here rather than left to
+      // fail the STK push for any activity with a longer title.
+      transactionDesc: activity.title.slice(0, TRANSACTION_DESC_MAX_LENGTH),
     });
 
-    await admin
+    const { error: linkError } = await admin
       .from("payment_transactions")
-      .update({ checkout_request_id: stk.checkoutRequestId })
+      .update({ checkout_request_id: stk.checkoutRequestId, merchant_request_id: stk.merchantRequestId })
       .eq("id", transaction.id);
+    if (linkError) {
+      // The prompt is already on the student's phone; without this link the
+      // callback can't find the row. Surface it loudly for manual reconciliation.
+      console.error(
+        `[stkpush] STK sent but could not store checkout_request_id ${stk.checkoutRequestId} for payment ${transaction.id}:`,
+        linkError.message,
+      );
+    }
 
     return NextResponse.json({
       message: "Check your phone and enter your M-Pesa PIN to complete payment.",

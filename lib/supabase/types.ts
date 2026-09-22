@@ -11,7 +11,18 @@ export type ActivityCategory = "sports" | "martial" | "performing" | "creative";
 export type BillingCycle = "month" | "week" | "lesson" | "day" | "one-time" | "free";
 export type LessonStatus = "draft" | "published";
 export type SubscriptionStatus = "pending_payment" | "active" | "cancelled" | "expired";
-export type TransactionStatus = "pending" | "completed" | "failed";
+export type TransactionStatus = "pending" | "completed" | "failed" | "cancelled" | "expired" | "review";
+export type ConfirmedVia = "callback" | "query";
+export type MpesaCallbackOutcome =
+  | "received"
+  | "credited"
+  | "duplicate"
+  | "failed_recorded"
+  | "amount_mismatch"
+  | "merchant_mismatch"
+  | "unmatched"
+  | "query_unavailable"
+  | "rejected";
 export type WithdrawalStatus = "pending" | "processing" | "successful" | "failed" | "reversed";
 export type ActivationPaymentStatus = "pending" | "completed" | "failed" | "expired";
 
@@ -334,6 +345,24 @@ export interface Database {
           platform_share: number;
           created_at: string;
           completed_at: string | null;
+          // Added by 0013_payment_state_machine_and_ledger.sql (Phase 1: database only; Phase 2 is the first app code to use these).
+          expected_amount: number;
+          merchant_request_id: string | null;
+          phone: string | null;
+          result_code: number | null;
+          result_desc: string | null;
+          callback_amount: number | null;
+          callback_phone: string | null;
+          paid_at: string | null;
+          confirmed_via: ConfirmedVia | null;
+          callback_received_at: string | null;
+          last_queried_at: string | null;
+          query_attempts: number;
+          teacher_pct: number | null;
+          platform_pct: number | null;
+          credited_at: string | null;
+          needs_review: boolean;
+          phone_mismatch: boolean;
         };
         Insert: Partial<Database["public"]["Tables"]["payment_transactions"]["Row"]> & {
           subscription_id: string;
@@ -468,6 +497,42 @@ export interface Database {
             columns: ["teacher_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // Added by 0013_payment_state_machine_and_ledger.sql (Phase 1: database only; Phase 2 is the first app code to use this).
+      mpesa_callbacks: {
+        Row: {
+          id: number;
+          received_at: string;
+          parent_id: number | null;
+          outcome: MpesaCallbackOutcome;
+          outcome_detail: string | null;
+          checkout_request_id: string | null;
+          merchant_request_id: string | null;
+          result_code: number | null;
+          payload: Json;
+          payment_transaction_id: string | null;
+        };
+        Insert: Partial<Database["public"]["Tables"]["mpesa_callbacks"]["Row"]> & {
+          outcome: MpesaCallbackOutcome;
+          payload: Json;
+        };
+        Update: Partial<Database["public"]["Tables"]["mpesa_callbacks"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "mpesa_callbacks_parent_id_fkey";
+            columns: ["parent_id"];
+            isOneToOne: false;
+            referencedRelation: "mpesa_callbacks";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "mpesa_callbacks_payment_transaction_id_fkey";
+            columns: ["payment_transaction_id"];
+            isOneToOne: false;
+            referencedRelation: "payment_transactions";
             referencedColumns: ["id"];
           },
         ];

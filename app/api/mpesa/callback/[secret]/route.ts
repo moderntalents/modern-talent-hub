@@ -1,56 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-
-type StkCallback = {
-  ResultDesc?: string;
-  CallbackMetadata?: { Item?: { Name: string; Value: string | number }[] };
-};
-
-// Applies a Daraja result to a coach activation payment. Flipping the row to
-// "completed" fires trg_activation_completed, which sets teacher_profiles.activated.
-async function reconcileActivationPayment(
-  supabase: ReturnType<typeof createAdminClient>,
-  checkoutRequestId: string,
-  resultCode: number,
-  stkCallback: StkCallback,
-) {
-  const { data: payment } = await supabase
-    .from("coach_activation_payments")
-    .select("id, status")
-    .eq("checkout_request_id", checkoutRequestId)
-    .maybeSingle();
-
-  if (!payment || payment.status === "completed") return;
-
-  if (resultCode === 0) {
-    const receipt = stkCallback.CallbackMetadata?.Item?.find((i) => i.Name === "MpesaReceiptNumber")?.Value;
-    // Success is honoured even if the row was already retired as "expired" or
-    // "failed" locally: the coach's money really moved, so they must be activated.
-    const { error } = await supabase
-      .from("coach_activation_payments")
-      .update({
-        status: "completed",
-        provider_reference: String(receipt ?? ""),
-        result_desc: stkCallback.ResultDesc ?? null,
-      })
-      .eq("id", payment.id)
-      .neq("status", "completed");
-    if (error) {
-      // e.g. a second successful payment for an already-activated coach (the
-      // one-completed-per-coach index) — needs a manual refund/review.
-      console.error(
-        `[activation] PAID but could not complete payment ${payment.id} (${checkoutRequestId}):`,
-        error.message,
-      );
-    }
-  } else if (payment.status === "pending") {
-    await supabase
-      .from("coach_activation_payments")
-      .update({ status: "failed", result_desc: stkCallback.ResultDesc ?? null })
-      .eq("id", payment.id)
-      .eq("status", "pending");
-  }
-}
+import { applyStkCallback, parseStkCallback } from "@/lib/mpesa-payments";
 
 /**
  * Safaricom Daraja calls this URL directly (server-to-server) after the payer
@@ -69,6 +19,10 @@ async function reconcileActivationPayment(
  * Generate one with: `openssl rand -hex 32`, then set
  *   MPESA_CALLBACK_SECRET=<that value>
  *   MPESA_CALLBACK_URL=https://<your-domain>/api/mpesa/callback/<that value>
+ *
+ * Everything past the secret check — matching, verifying, and crediting — is
+ * done by lib/mpesa-payments.ts, so the exact same logic is what the tests
+ * exercise directly against the database.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ secret: string }> }) {
   const { secret } = await params;
@@ -81,61 +35,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ sec
   }
 
   const payload = await request.json().catch(() => null);
-  const stkCallback = payload?.Body?.stkCallback;
+  const parsed = payload ? parseStkCallback(payload) : null;
 
-  if (!stkCallback?.CheckoutRequestID) {
+  if (!parsed) {
     return NextResponse.json({ ResultCode: 1, ResultDesc: "Invalid payload" }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
-  const checkoutRequestId: string = stkCallback.CheckoutRequestID;
-  const resultCode: number = stkCallback.ResultCode;
-
-  const { data: transaction } = await supabase
-    .from("payment_transactions")
-    .select("id, status")
-    .eq("checkout_request_id", checkoutRequestId)
-    .single();
-
-  if (!transaction) {
-    // Not a subscription payment — it may be a coach activation payment.
-    // Either way, acknowledge so Safaricom doesn't retry indefinitely for a
-    // transaction we have no record of.
-    await reconcileActivationPayment(supabase, checkoutRequestId, resultCode, stkCallback);
-    return NextResponse.json({ ResultCode: 0, ResultDesc: "Accepted" });
+  const admin = createAdminClient();
+  try {
+    await applyStkCallback(admin, parsed, payload);
+  } catch (err) {
+    // applyStkCallback handles its own expected error paths and never
+    // throws for them; this is a last-resort net so an unexpected bug never
+    // turns into an unhandled 500 that makes Daraja retry forever.
+    console.error("[mpesa callback] unexpected error while applying callback:", err instanceof Error ? err.message : err);
   }
 
-  // Duplicate-callback guard #1: Safaricom can and does resend callbacks: if
-  // we've already reconciled this transaction, stop here instead of touching
-  // it again. Guard #2 lives in the database itself — trg_transaction_completed
-  // only fires its wallet-credit logic `when old.status is distinct from
-  // 'completed'`, and Postgres serializes concurrent UPDATEs to the same row
-  // via row-level locking, so even two callbacks arriving at the exact same
-  // instant cannot both win the "was pending" check. A wallet can only ever
-  // be credited once per transaction row, no matter how many times Safaricom
-  // (or anyone) POSTs this callback.
-  if (transaction.status !== "pending") {
-    return NextResponse.json({ ResultCode: 0, ResultDesc: "Already processed" });
-  }
-
-  if (resultCode === 0) {
-    const items: { Name: string; Value: string | number }[] =
-      stkCallback.CallbackMetadata?.Item ?? [];
-    const receipt = items.find((i) => i.Name === "MpesaReceiptNumber")?.Value;
-
-    // Flipping status to "completed" fires trg_transaction_completed, which
-    // atomically applies the 70/30 split, credits the teacher's wallet, and
-    // activates the subscription — see supabase/migrations/0001_init.sql.
-    // The credited amount is always transaction.amount, set server-side at
-    // STK-push time — nothing in this callback payload can alter it.
-    await supabase
-      .from("payment_transactions")
-      .update({ status: "completed", provider_reference: String(receipt ?? "") })
-      .eq("id", transaction.id);
-  } else {
-    await supabase.from("payment_transactions").update({ status: "failed" }).eq("id", transaction.id);
-  }
-
-  // Daraja requires a 200 with this exact shape to stop retrying.
+  // Daraja requires a 200 with this exact shape to stop retrying, regardless
+  // of what actually happened internally (unmatched / duplicate / rejected
+  // are all things Daraja itself can do nothing about by retrying).
   return NextResponse.json({ ResultCode: 0, ResultDesc: "Accepted" });
 }
