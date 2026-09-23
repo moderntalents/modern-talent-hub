@@ -1,8 +1,15 @@
 // Tests for migration 0016 (coach B2C withdrawal) and lib/mpesa-withdrawals.ts, run
-// against a REAL PGlite Postgres with 0001-0010, 0012, 0013, 0015, 0016 applied — the
-// actual triggers/constraints that run in production decide whether a withdrawal can be
-// created, reserved, and finalized. fakeAdmin() is the same thin Supabase-client-shaped
+// against a REAL PGlite Postgres with 0001-0010, 0012, 0013, 0015, 0016, 0017 applied —
+// the actual triggers/constraints that run in production decide whether a withdrawal can
+// be created, reserved, and finalized. fakeAdmin() is the same thin Supabase-client-shaped
 // adapter used across the other Phase 2 test files.
+//
+// applyB2CCallback now matches by ConversationID against withdrawal_b2c_attempts (0017),
+// not against withdrawal_requests directly — insertAttempt() below stands in for what
+// createB2CAttempt()/attachB2CIdentifiers() would have done in the real request flow.
+// The multi-attempt-specific scenarios (retries, the reconciliation sweep, admin
+// resolution, and the callback/retry concurrency races) live in
+// tests/b2c-reconciliation.test.ts.
 
 import { test, describe, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -36,6 +43,8 @@ beforeEach(async () => {
   await db.exec(`
     set session_replication_role = replica;
     delete from wallet_ledger;
+    delete from withdrawal_reconciliation_log;
+    delete from withdrawal_b2c_attempts;
     delete from withdrawal_requests;
     update teacher_profiles set wallet_balance = 0, mpesa_number = null;
     reset session_replication_role;
@@ -85,6 +94,13 @@ function successPayload(conversationId: string, amount: number, receipt = "B2C-R
       ...overrides,
     },
   };
+}
+
+async function insertAttempt(withdrawalId: string, conversationId: string, status: "requested" | "accepted" = "accepted", attemptNumber = 1) {
+  await db.query(
+    "insert into withdrawal_b2c_attempts (withdrawal_request_id, attempt_number, status, conversation_id, originator_conversation_id) values ($1, $2, $3, $4, $5)",
+    [withdrawalId, attemptNumber, status, conversationId, "orig-" + conversationId],
+  );
 }
 
 function failurePayload(conversationId: string, resultCode = 2001, resultDesc = "The initiator information is invalid.") {
@@ -178,12 +194,12 @@ describe("applyB2CCallback — success", () => {
     await setupWallet(ID.T2, 1000);
     const { rows } = await insertMpesaWithdrawal(ID.T2, 400);
     const w = rows[0];
-    await db.query("update withdrawal_requests set conversation_id = $1 where id = $2", ["conv-1", w.id]);
+    await insertAttempt(w.id, "conv-1");
 
     const payload = successPayload("conv-1", 400);
     const outcome = await applyB2CCallback(admin, parseB2CCallback(payload)!);
 
-    assert.equal(outcome, "successful");
+    assert.equal(outcome, "resolved_successful");
     const after = await db.query<{ status: string; provider_reference: string; result_code: number }>(
       "select status, provider_reference, result_code from withdrawal_requests where id = $1",
       [w.id],
@@ -195,11 +211,49 @@ describe("applyB2CCallback — success", () => {
     assert.equal((await ledgerRows(ID.T2)).length, 1, "still just the original debit — no second ledger row");
   });
 
+  test("a mismatched Daraja-reported amount is logged for manual review, without changing the outcome, status, balance or ledger", async () => {
+    await setupWallet(ID.T2, 1000);
+    const { rows } = await insertMpesaWithdrawal(ID.T2, 400);
+    const w = rows[0];
+    await insertAttempt(w.id, "conv-mismatch-1");
+
+    const originalError = console.error;
+    const logged: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      logged.push(args);
+    };
+    let outcome: string;
+    try {
+      // 400 was authorized/reserved; Daraja reports having paid 350.
+      outcome = await applyB2CCallback(admin, parseB2CCallback(successPayload("conv-mismatch-1", 350))!);
+    } finally {
+      console.error = originalError;
+    }
+
+    assert.ok(
+      logged.some((args) => String(args[0]).includes("AMOUNT MISMATCH")),
+      "the mismatch must be logged loudly for manual review",
+    );
+
+    assert.equal(outcome, "resolved_successful", "log-only — the callback still resolves exactly as a normal success would");
+    const after = await db.query<{ status: string }>("select status from withdrawal_requests where id = $1", [w.id]);
+    assert.equal(after.rows[0].status, "successful", "status is unaffected by the mismatch");
+    assert.equal(await balance(ID.T2), 600, "balance is exactly what a normal 400 reservation produces — the mismatch never touches the wallet");
+    assert.equal((await ledgerRows(ID.T2)).length, 1, "still exactly the one original debit — no reversal, no second entry, no attempt-level effect");
+
+    const attempt = await db.query<{ status: string; attempt_number: number }>(
+      "select status, attempt_number from withdrawal_b2c_attempts where withdrawal_request_id = $1",
+      [w.id],
+    );
+    assert.equal(attempt.rows.length, 1, "no new attempt was created because of the mismatch");
+    assert.equal(attempt.rows[0].status, "succeeded");
+  });
+
   test("a duplicate success callback has no additional financial effect", async () => {
     await setupWallet(ID.T2, 1000);
     const { rows } = await insertMpesaWithdrawal(ID.T2, 400);
     const w = rows[0];
-    await db.query("update withdrawal_requests set conversation_id = $1 where id = $2", ["conv-2", w.id]);
+    await insertAttempt(w.id, "conv-2");
     const payload = successPayload("conv-2", 400);
     const parsed = parseB2CCallback(payload)!;
 
@@ -208,8 +262,8 @@ describe("applyB2CCallback — success", () => {
     const ledgerAfterFirst = await ledgerRows(ID.T2);
     const second = await applyB2CCallback(admin, parsed);
 
-    assert.equal(first, "successful");
-    assert.equal(second, "duplicate");
+    assert.equal(first, "resolved_successful");
+    assert.equal(second, "superseded_recorded", "the attempt is no longer live once resolved, so a repeat callback is recorded for audit only");
     assert.equal(await balance(ID.T2), balanceAfterFirst);
     assert.deepEqual(await ledgerRows(ID.T2), ledgerAfterFirst);
   });
@@ -235,11 +289,11 @@ describe("applyB2CCallback — failure and reversal", () => {
     await setupWallet(ID.T2, 1000);
     const { rows } = await insertMpesaWithdrawal(ID.T2, 400);
     const w = rows[0];
-    await db.query("update withdrawal_requests set conversation_id = $1 where id = $2", ["conv-4", w.id]);
+    await insertAttempt(w.id, "conv-4");
     assert.equal(await balance(ID.T2), 600, "reserved");
 
     const outcome = await applyB2CCallback(admin, parseB2CCallback(failurePayload("conv-4"))!);
-    assert.equal(outcome, "failed_recorded");
+    assert.equal(outcome, "resolved_failed");
     assert.equal(await balance(ID.T2), 1000, "fully restored");
 
     const rows2 = await ledgerRows(ID.T2);
@@ -253,15 +307,15 @@ describe("applyB2CCallback — failure and reversal", () => {
     await setupWallet(ID.T2, 1000);
     const { rows } = await insertMpesaWithdrawal(ID.T2, 400);
     const w = rows[0];
-    await db.query("update withdrawal_requests set conversation_id = $1 where id = $2", ["conv-5", w.id]);
+    await insertAttempt(w.id, "conv-5");
     const parsed = parseB2CCallback(failurePayload("conv-5"))!;
 
     const first = await applyB2CCallback(admin, parsed);
     const balanceAfterFirst = await balance(ID.T2);
     const second = await applyB2CCallback(admin, parsed);
 
-    assert.equal(first, "failed_recorded");
-    assert.equal(second, "duplicate");
+    assert.equal(first, "resolved_failed");
+    assert.equal(second, "superseded_recorded");
     assert.equal(await balance(ID.T2), balanceAfterFirst);
     assert.equal((await ledgerRows(ID.T2)).length, 2, "still exactly one debit and one reversal");
   });
@@ -270,7 +324,7 @@ describe("applyB2CCallback — failure and reversal", () => {
     await setupWallet(ID.T2, 1000);
     const { rows } = await insertMpesaWithdrawal(ID.T2, 400);
     const w = rows[0];
-    await db.query("update withdrawal_requests set conversation_id = $1 where id = $2", ["conv-6", w.id]);
+    await insertAttempt(w.id, "conv-6");
     await applyB2CCallback(admin, parseB2CCallback(failurePayload("conv-6"))!);
     // Force the row back to 'processing' at the SQL level (bypassing the app) to prove the
     // unique index itself — not just the app-level duplicate check — stops a second reversal.
@@ -298,15 +352,15 @@ describe("callback matching, validation and idempotency edge cases", () => {
     assert.equal(parseB2CCallback({ Result: { ConversationID: "x" } }), null, "missing/non-numeric ResultCode");
   });
 
-  test("a callback for a pending (not yet processing) row is a safe no-op", async () => {
+  test("a callback for a still-'requested' attempt (arrives before the synchronous accept was recorded) still resolves it live", async () => {
     await setupWallet(ID.T2, 1000);
-    const bank = await db.query<{ id: string }>(
-      "insert into withdrawal_requests (teacher_id, amount, method, destination) values ($1, 200, 'bank', 'x') returning id",
-      [ID.T2],
-    );
-    await db.query("update withdrawal_requests set conversation_id = $1 where id = $2", ["conv-7", bank.rows[0].id]);
+    const { rows } = await insertMpesaWithdrawal(ID.T2, 200);
+    const w = rows[0];
+    await insertAttempt(w.id, "conv-7", "requested");
     const outcome = await applyB2CCallback(admin, parseB2CCallback(successPayload("conv-7", 200))!);
-    assert.equal(outcome, "duplicate", "a pending row is not 'processing', so this is treated as not-actionable rather than finalized");
+    assert.equal(outcome, "resolved_successful", "'requested' is still live, same as 'accepted' — only 'succeeded'/'failed'/'ambiguous'/'superseded' are not");
+    const after = await db.query<{ status: string }>("select status from withdrawal_requests where id = $1", [w.id]);
+    assert.equal(after.rows[0].status, "successful");
   });
 
   test("illegal state transitions are rejected by the database", async () => {

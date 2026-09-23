@@ -7,6 +7,7 @@ import { WithdrawalActions } from "./WithdrawalActions";
 const TONE = {
   pending: "warning",
   processing: "warning",
+  review: "danger",
   successful: "success",
   failed: "danger",
   reversed: "danger",

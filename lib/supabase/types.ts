@@ -23,7 +23,16 @@ export type MpesaCallbackOutcome =
   | "unmatched"
   | "query_unavailable"
   | "rejected";
-export type WithdrawalStatus = "pending" | "processing" | "successful" | "failed" | "reversed";
+export type WithdrawalStatus = "pending" | "processing" | "review" | "successful" | "failed" | "reversed";
+export type B2CAttemptStatus = "requested" | "accepted" | "succeeded" | "failed" | "ambiguous" | "superseded";
+export type ReconciliationEventType =
+  | "attempt_created"
+  | "attempt_resolved"
+  | "attempt_superseded_late_result"
+  | "swept_to_review"
+  | "retry_authorized"
+  | "admin_resolved"
+  | "urgent_review_flagged";
 export type ActivationPaymentStatus = "pending" | "completed" | "failed" | "expired";
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -413,6 +422,10 @@ export interface Database {
           result_code: number | null;
           result_desc: string | null;
           reserved_at: string | null;
+          // Added by 0017_b2c_reconciliation.sql
+          needs_urgent_review: boolean;
+          reconciliation_claimed_at: string | null;
+          reconciliation_claimed_by: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["withdrawal_requests"]["Row"]> & {
           teacher_id: string;
@@ -426,6 +439,66 @@ export interface Database {
             columns: ["teacher_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // Added by 0017_b2c_reconciliation.sql
+      withdrawal_b2c_attempts: {
+        Row: {
+          id: string;
+          withdrawal_request_id: string;
+          attempt_number: number;
+          status: B2CAttemptStatus;
+          conversation_id: string | null;
+          originator_conversation_id: string | null;
+          requested_at: string;
+          accepted_at: string | null;
+          resolved_at: string | null;
+          provider_reference: string | null;
+          transaction_id: string | null;
+          result_code: number | null;
+          result_desc: string | null;
+          raw_response: Json | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["withdrawal_b2c_attempts"]["Row"]> & {
+          withdrawal_request_id: string;
+          attempt_number: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["withdrawal_b2c_attempts"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "withdrawal_b2c_attempts_withdrawal_request_id_fkey";
+            columns: ["withdrawal_request_id"];
+            isOneToOne: false;
+            referencedRelation: "withdrawal_requests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      withdrawal_reconciliation_log: {
+        Row: {
+          id: number;
+          created_at: string;
+          withdrawal_request_id: string;
+          attempt_id: string | null;
+          event_type: ReconciliationEventType;
+          actor: string | null;
+          reason: string | null;
+          detail: Json | null;
+        };
+        Insert: Partial<Database["public"]["Tables"]["withdrawal_reconciliation_log"]["Row"]> & {
+          withdrawal_request_id: string;
+          event_type: ReconciliationEventType;
+        };
+        Update: Partial<Database["public"]["Tables"]["withdrawal_reconciliation_log"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "withdrawal_reconciliation_log_withdrawal_request_id_fkey";
+            columns: ["withdrawal_request_id"];
+            isOneToOne: false;
+            referencedRelation: "withdrawal_requests";
             referencedColumns: ["id"];
           },
         ];
@@ -702,6 +775,50 @@ export interface Database {
       decide_guardian_consent: {
         Args: { p_token_hash: string; p_decision: string };
         Returns: "approved" | "declined" | "used" | "expired" | "invalid";
+      };
+      // Server-only, from 0017_b2c_reconciliation.sql.
+      create_b2c_attempt: {
+        Args: { p_withdrawal_id: string };
+        Returns: Database["public"]["Tables"]["withdrawal_b2c_attempts"]["Row"];
+      };
+      resolve_b2c_attempt: {
+        Args: {
+          p_attempt_id: string;
+          p_conversation_id: string | null;
+          p_originator_conversation_id: string | null;
+          p_result_code: number | null;
+          p_result_desc: string | null;
+          p_provider_reference: string | null;
+          p_transaction_id: string | null;
+          p_raw_response: Json | null;
+        };
+        Returns: "accepted" | "no_op" | "superseded_recorded" | "resolved_successful" | "resolved_failed";
+      };
+      mark_attempt_ambiguous: {
+        Args: { p_attempt_id: string; p_detail: string };
+        Returns: undefined;
+      };
+      authorize_b2c_retry: {
+        Args: { p_withdrawal_id: string; p_admin_id: string; p_reason: string };
+        Returns: Database["public"]["Tables"]["withdrawal_b2c_attempts"]["Row"];
+      };
+      admin_resolve_withdrawal: {
+        Args: {
+          p_withdrawal_id: string;
+          p_outcome: "successful" | "failed";
+          p_admin_id: string;
+          p_reason: string;
+          p_provider_reference: string | null;
+        };
+        Returns: undefined;
+      };
+      claim_withdrawal_for_reconciliation: {
+        Args: { p_withdrawal_id: string; p_actor: string | null; p_lease_minutes: number };
+        Returns: boolean;
+      };
+      sweep_withdrawal_to_review: {
+        Args: { p_withdrawal_id: string; p_reason: string };
+        Returns: boolean;
       };
     };
   };

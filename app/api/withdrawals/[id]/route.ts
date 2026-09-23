@@ -46,6 +46,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   // grants; the admin role check above already gates who can reach this code path.
   const admin = createAdminClient();
 
+  // mpesa withdrawals must be resolved through the dedicated, evidence-requiring
+  // endpoints (app/api/admin/withdrawals/[id]/retry and .../resolve) — never through
+  // this generic route, which doesn't require or record a justification and doesn't
+  // touch the B2C attempt bookkeeping. bank withdrawals are unaffected (unchanged).
+  if (status === "successful" || status === "failed") {
+    const { data: current } = await admin.from("withdrawal_requests").select("method, status").eq("id", id).maybeSingle();
+    if (current?.method === "mpesa" && (current.status === "processing" || current.status === "review")) {
+      return NextResponse.json(
+        { error: "mpesa withdrawals must be resolved via /api/admin/withdrawals/[id]/resolve or /retry, which require a written justification." },
+        { status: 400 },
+      );
+    }
+  }
+
   if (status === "reversed") {
     const { data: current } = await admin
       .from("withdrawal_requests")

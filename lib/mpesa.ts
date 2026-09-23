@@ -334,6 +334,19 @@ export interface B2CPayoutResult {
 }
 
 /**
+ * Thrown when we cannot determine whether Safaricom actually received a B2C
+ * request — a network error or timeout calling the paymentrequest endpoint
+ * itself, or a response we can't confidently interpret as a clean
+ * rejection. This is deliberately distinct from a plain Error (which means
+ * Daraja definitely, synchronously rejected the request): the caller must
+ * NOT treat an ambiguous failure the same as a confirmed one — see
+ * lib/mpesa-withdrawals.ts's mark_attempt_ambiguous() path. Getting a
+ * B2CAmbiguousError must never result in crediting the wallet back, because
+ * the payout may genuinely be in flight at Safaricom.
+ */
+export class B2CAmbiguousError extends Error {}
+
+/**
  * Business-to-Customer payout (coach withdrawal to M-Pesa).
  *
  * Returns once Daraja has ACCEPTED the request for processing — this is not
@@ -359,11 +372,13 @@ export async function initiateB2CPayout(params: {
     throw new Error("originatorConversationId is required for a B2C payout.");
   }
 
+  // A failure obtaining a token means we never even attempted to send the payout —
+  // that's a plain, confident failure, not an ambiguous one.
   const token = await getAccessToken();
 
-  const res = await fetchWithTimeout(
-    `${baseUrl()}/mpesa/b2c/v3/paymentrequest`,
-    {
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl()}/mpesa/b2c/v3/paymentrequest`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -382,22 +397,37 @@ export async function initiateB2CPayout(params: {
         ResultURL: process.env.MPESA_B2C_RESULT_URL,
         Occasion: "",
       }),
-    },
-    B2C_TIMEOUT_MS,
-    "B2C payout",
-  );
-
-  const data = await res.json().catch(() => null);
-  // Deliberately no response body in errors beyond ResponseDescription: Daraja's B2C
-  // error payloads can echo request details, and SecurityCredential must never surface
-  // in a log or an error message a caller might display.
-  if (!res.ok || !data || String(data.ResponseCode) !== "0") {
-    throw new Error(data?.errorMessage || data?.ResponseDescription || "B2C payout request failed");
+      signal: AbortSignal.timeout(B2C_TIMEOUT_MS),
+    });
+  } catch (err) {
+    // No response at all — a timeout or network failure calling the B2C endpoint
+    // itself. We genuinely do not know whether Safaricom received this request.
+    const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+    throw new B2CAmbiguousError(`M-Pesa B2C payout ${timedOut ? "timed out" : "failed: could not reach Safaricom"}.`);
   }
 
-  return {
-    conversationId: data.ConversationID,
-    originatorConversationId: data.OriginatorConversationID,
-    responseDescription: data.ResponseDescription,
-  };
+  const data = await res.json().catch(() => null);
+
+  // A well-formed response with an explicit, non-zero ResponseCode is Daraja
+  // affirmatively saying no — safe to treat as a confirmed, final rejection.
+  if (res.ok && data && typeof data.ResponseCode === "string") {
+    if (data.ResponseCode === "0") {
+      return {
+        conversationId: data.ConversationID,
+        originatorConversationId: data.OriginatorConversationID,
+        responseDescription: data.ResponseDescription,
+      };
+    }
+    // Deliberately no response body in errors beyond ResponseDescription: Daraja's
+    // B2C error payloads can echo request details, and SecurityCredential must
+    // never surface in a log or an error message a caller might display.
+    throw new Error(data.errorMessage || data.ResponseDescription || "B2C payout request failed");
+  }
+
+  // An HTTP-level error, or a response we can't confidently interpret — Safaricom
+  // responded, but not in a way we can safely read as "definitely nothing was
+  // queued." Ambiguous, not a confirmed rejection.
+  throw new B2CAmbiguousError(
+    data?.errorMessage || data?.ResponseDescription || `B2C payout request returned an unreadable response (HTTP ${res.status}).`,
+  );
 }

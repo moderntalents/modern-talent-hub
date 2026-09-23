@@ -9,6 +9,7 @@ import { PAYMENT_VISIBLE_COLUMNS } from "@/lib/payment-columns";
 const WITHDRAWAL_TONE = {
   pending: "warning",
   processing: "warning",
+  review: "warning",
   successful: "success",
   failed: "danger",
   reversed: "danger",

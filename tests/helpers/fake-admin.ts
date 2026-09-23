@@ -134,6 +134,45 @@ class QueryBuilder implements PromiseLike<Result> {
   }
 }
 
+// Postgres functions (called via .rpc() in real Supabase) that return a single
+// composite row (not a scalar, not a SETOF) — real supabase-js hands these back as one
+// plain object, not wrapped in an array. Every other function here is scalar or void.
+const COMPOSITE_RETURNING_FUNCTIONS = new Set(["create_b2c_attempt", "authorize_b2c_retry"]);
+
+class RpcCall implements PromiseLike<Result> {
+  constructor(
+    private db: PGlite,
+    private fn: string,
+    private args: Record<string, unknown>,
+  ) {}
+
+  then<TResult1 = Result, TResult2 = never>(
+    onfulfilled?: ((value: Result) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): PromiseLike<TResult1 | TResult2> {
+    const exec = async (): Promise<Result> => {
+      const values: unknown[] = [];
+      const keys = Object.keys(this.args);
+      const callArgs = keys.map((k) => `${k} := ${bindValue(values, this.args[k])}`).join(", ");
+      const composite = COMPOSITE_RETURNING_FUNCTIONS.has(this.fn);
+      const text = composite
+        ? `select * from ${this.fn}(${callArgs})`
+        : `select ${this.fn}(${callArgs}) as result`;
+      try {
+        const r = await as(this.db, "service", () => this.db.query<Row>(text, values));
+        const data = composite ? (r.rows[0] ?? null) : (r.rows[0]?.result ?? null);
+        return { data, error: null };
+      } catch (e) {
+        return { data: null, error: { message: (e as Error).message } };
+      }
+    };
+    return exec().then(onfulfilled, onrejected);
+  }
+}
+
 export function fakeAdmin(db: PGlite): AdminClient {
-  return { from: (table: string) => new QueryBuilder(db, table) } as unknown as AdminClient;
+  return {
+    from: (table: string) => new QueryBuilder(db, table),
+    rpc: (fn: string, args: Record<string, unknown> = {}) => new RpcCall(db, fn, args),
+  } as unknown as AdminClient;
 }

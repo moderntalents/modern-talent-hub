@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { initiateB2CPayout, isB2CConfigured, validatePaymentAmount } from "@/lib/mpesa";
+import { B2CAmbiguousError, initiateB2CPayout, isB2CConfigured, validatePaymentAmount } from "@/lib/mpesa";
+import { attachB2CIdentifiers, createB2CAttempt, markAttemptAmbiguous } from "@/lib/mpesa-withdrawals";
 
 // Creates a withdrawal request.
 //
@@ -95,45 +96,63 @@ export async function POST(request: Request) {
     return NextResponse.json({ withdrawal });
   }
 
-  // method === "mpesa": the row above is already "processing" (reserved) — now
-  // actually send the money.
+  // method === "mpesa": the row above is already "processing" (reserved) — now start
+  // attempt 1 and actually send the money. createB2CAttempt records intent BEFORE the
+  // network call (see 0017), so a crash between here and initiateB2CPayout leaves a
+  // 'requested' attempt the reconciliation sweep can find — not an untraceable gap.
+  const attempt = await createB2CAttempt(admin, withdrawal.id);
+
   try {
     const payout = await initiateB2CPayout({
       phoneNumber: withdrawal.destination,
       amount: withdrawal.amount,
       remarks: `MTH withdrawal ${withdrawal.id.slice(0, 8)}`,
-      originatorConversationId: withdrawal.id,
+      // The attempt's own id, not withdrawal.id — it's already in the database (this
+      // attempt row was just created), so it survives a crash between Daraja's
+      // synchronous accept and attachB2CIdentifiers persisting the response. Daraja
+      // echoes it back on every callback, which is what makes applyB2CCallback's
+      // OriginatorConversationID fallback lookup work even if conversation_id never
+      // got saved locally.
+      originatorConversationId: attempt.id,
     });
 
-    const { error: linkError } = await admin
-      .from("withdrawal_requests")
-      .update({ conversation_id: payout.conversationId, originator_conversation_id: payout.originatorConversationId })
-      .eq("id", withdrawal.id);
-    if (linkError) {
-      // The payout is already in flight at Safaricom; without this link the callback
-      // can't find the row. Surface it loudly for manual reconciliation.
-      console.error(
-        `[withdrawals] B2C sent but could not store conversation_id ${payout.conversationId} for withdrawal ${withdrawal.id}:`,
-        linkError.message,
-      );
-    }
+    await attachB2CIdentifiers(admin, attempt.id, payout.conversationId, payout.originatorConversationId);
 
     return NextResponse.json({
       message: "Withdrawal submitted — you'll be paid out via M-Pesa shortly.",
-      withdrawal: { ...withdrawal, conversation_id: payout.conversationId, status: "processing" },
+      withdrawal: { ...withdrawal, status: "processing" },
     });
   } catch (err) {
-    // Daraja refused the request outright (bad number, B2C not approved, network
-    // error, etc.) — the reservation must not be left stranded. Marking the row
-    // "failed" runs the database's own reversal path (0016), crediting the amount
-    // back and writing exactly one withdrawal_reversal ledger entry.
-    const { error: failError } = await admin
-      .from("withdrawal_requests")
-      .update({ status: "failed", result_desc: err instanceof Error ? err.message : "B2C payout failed" })
-      .eq("id", withdrawal.id)
-      .eq("status", "processing");
+    if (err instanceof B2CAmbiguousError) {
+      // We do NOT know whether Safaricom received this request — must not assume
+      // either way. The attempt is marked 'ambiguous'; the PARENT withdrawal stays
+      // 'processing' (reservation untouched) until the reconciliation sweep moves it
+      // to 'review' for a human to check Safaricom's own records. Never mark this
+      // 'failed' — that would credit the wallet back while a real payout might still
+      // be in flight.
+      await markAttemptAmbiguous(admin, attempt.id, err.message);
+      return NextResponse.json(
+        { error: "Could not confirm the M-Pesa payout request was received. It's being reviewed — check back shortly.", ambiguous: true },
+        { status: 202 },
+      );
+    }
+
+    // Daraja definitively rejected the request (bad number, B2C not approved, etc.) —
+    // safe to conclude nothing was queued. resolve_b2c_attempt runs the database's own
+    // reversal path (0016/0017), crediting the amount back and writing exactly one
+    // withdrawal_reversal ledger entry.
+    const { error: failError } = await admin.rpc("resolve_b2c_attempt", {
+      p_attempt_id: attempt.id,
+      p_conversation_id: null,
+      p_originator_conversation_id: null,
+      p_result_code: -1,
+      p_result_desc: err instanceof Error ? err.message : "B2C payout request failed",
+      p_provider_reference: null,
+      p_transaction_id: null,
+      p_raw_response: null,
+    });
     if (failError) {
-      console.error(`[withdrawals] could not release reservation for withdrawal ${withdrawal.id} after B2C failure:`, failError.message);
+      console.error(`[withdrawals] could not release reservation for withdrawal ${withdrawal.id} after B2C rejection:`, failError.message);
     }
 
     return NextResponse.json(
