@@ -65,12 +65,6 @@ export async function seedWorld(db: PGlite): Promise<void> {
       ('${ID.S7}', '1990-01-01', null, 'not_required'),
       ('${ID.S8}', '2012-01-01', 'g8@test.invalid', 'granted');
 
-    -- 0014: S2's guardian also allowed private messaging, on wording that covers it.
-    update age_records
-    set guardian_messaging_allowed = true, guardian_messaging_status = 'granted',
-        guardian_messaging_version = 'guardian-v2', guardian_messaging_decided_at = now()
-    where profile_id = '${ID.S2}';
-
     insert into subjects (id, name) values ('${ID.SUBJECT}', 'Mathematics');
     insert into lessons (id, subject_id, teacher_id, title, status) values
       ('${ID.L1}', '${ID.SUBJECT}', '${ID.T1}', 'Fractions', 'published'),
@@ -87,4 +81,22 @@ export async function seedWorld(db: PGlite): Promise<void> {
       ('${ID.S1}', '${ID.A1}', '${ID.T2}', 'active'),
       ('${ID.S5}', '${ID.A1}', '${ID.T2}', 'pending_payment');
   `);
+
+  // 0014 (messaging guardian consent) is optional here: some tests intentionally build a
+  // database that stops before it's applied, to snapshot schema state pre/post another
+  // migration (see tests/payments-db.test.ts's `include: f => f < "0011" || ...` calls).
+  // Only set S2's messaging-consent fields if the column 0014 adds actually exists —
+  // when it does (every messaging test), this runs exactly as before.
+  const messagingConsentColumn = await db.query(
+    `select 1 from information_schema.columns where table_name = 'age_records' and column_name = 'guardian_messaging_allowed'`,
+  );
+  if (messagingConsentColumn.rows.length > 0) {
+    await db.exec(`
+      -- 0014: S2's guardian also allowed private messaging, on wording that covers it.
+      update age_records
+      set guardian_messaging_allowed = true, guardian_messaging_status = 'granted',
+          guardian_messaging_version = 'guardian-v2', guardian_messaging_decided_at = now()
+      where profile_id = '${ID.S2}';
+    `);
+  }
 }
