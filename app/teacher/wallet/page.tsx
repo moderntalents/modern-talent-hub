@@ -4,6 +4,7 @@ import { formatKes, REVENUE_SPLIT } from "@/lib/constants";
 import { Card, Badge } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { WithdrawForm } from "./WithdrawForm";
+import { PAYMENT_VISIBLE_COLUMNS } from "@/lib/payment-columns";
 
 const WITHDRAWAL_TONE = {
   pending: "warning",
@@ -22,7 +23,7 @@ export default async function TeacherWalletPage() {
       supabase.from("teacher_profiles").select("*").eq("profile_id", session!.user.id).single(),
       supabase
         .from("payment_transactions")
-        .select("*")
+        .select(PAYMENT_VISIBLE_COLUMNS)
         .eq("teacher_id", session!.user.id)
         .eq("status", "completed")
         .order("completed_at", { ascending: false })

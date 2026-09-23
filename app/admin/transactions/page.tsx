@@ -2,12 +2,15 @@ import { createClient } from "@/lib/supabase/server";
 import { formatKes } from "@/lib/constants";
 import { Card, Badge } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PAYMENT_VISIBLE_COLUMNS } from "@/lib/payment-columns";
 
 export default async function AdminTransactionsPage() {
   const supabase = await createClient();
   const { data: transactions } = await supabase
     .from("payment_transactions")
-    .select("*, student:profiles!payment_transactions_student_id_fkey(full_name), teacher:profiles!payment_transactions_teacher_id_fkey(full_name)")
+    .select(
+      `${PAYMENT_VISIBLE_COLUMNS}, student:profiles!payment_transactions_student_id_fkey(full_name), teacher:profiles!payment_transactions_teacher_id_fkey(full_name)` as const,
+    )
     .order("created_at", { ascending: false })
     .limit(100);
 

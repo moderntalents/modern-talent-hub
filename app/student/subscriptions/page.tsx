@@ -4,6 +4,7 @@ import { formatKes } from "@/lib/constants";
 import { arePaymentsEnabled } from "@/lib/settings";
 import { Card, Badge } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PAYMENT_VISIBLE_COLUMNS } from "@/lib/payment-columns";
 
 const STATUS_TONE = {
   active: "success",
@@ -26,7 +27,7 @@ export default async function SubscriptionsPage() {
       .order("created_at", { ascending: false }),
     supabase
       .from("payment_transactions")
-      .select("*")
+      .select(PAYMENT_VISIBLE_COLUMNS)
       .eq("student_id", session!.user.id)
       .order("created_at", { ascending: false }),
   ]);

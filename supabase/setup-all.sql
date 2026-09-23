@@ -4,7 +4,9 @@
 -- Paste this whole file into the Supabase SQL Editor (the project whose URL is
 -- NEXT_PUBLIC_SUPABASE_URL in Vercel) and click Run ONCE, on an EMPTY database.
 -- It is the concatenation of, in order:
---   migrations/0001_init.sql, seed.sql, 0002 ... 0010, 0013
+--   migrations/0001_init.sql, seed.sql, 0002 ... 0010, 0012, 0013, 0015
+-- (0011 and 0014 belong to the separate messaging work and are not part of
+-- this branch.)
 -- (the individual files remain the source of truth — regenerate this file if
 -- they change). Running it twice will error on "already exists"; that's safe,
 -- just don't re-run it. Already set up? Run only the newest migration files.
@@ -1296,6 +1298,96 @@ grant execute on function decide_guardian_consent(text, text) to service_role;
 
 
 -- ############################################################################
+-- ## migrations/0012_lock_down_teacher_profiles.sql
+-- ############################################################################
+
+-- Modern Talent Hub — lock down teacher_profiles (security fix).
+-- Run after 0010_age_and_guardian_consent.sql. Safe to run more than once.
+--
+-- Two holes in 0001_init.sql, both confirmed on the production database:
+--
+--   1. "teacher_profile_public_read" (SELECT, role public, using true). Anyone holding the public API key —
+--      signed in or not — could read every teacher's wallet_balance, mpesa_number, bank_name, bank_account
+--      and payout_method. The comment in 0001 says these columns are "only ever selected server-side", but
+--      nothing enforced that.
+--
+--   2. "teacher_profile_owner" (ALL, no column limits). A teacher could update their OWN row from a browser,
+--      including `approved` (skipping admin approval) and `wallet_balance` (forging a balance that the
+--      withdrawal check then trusts), and could delete and re-insert their own row with those values.
+--      0004 closed the same kind of hole for profiles.role; 0002 closed it for teacher_profiles.activated.
+--
+-- What legitimately uses this table (checked in the code, so nothing here breaks it):
+--   * a teacher READS their own row (dashboard, wallet, activation status)
+--   * an admin READS all rows and changes `approved` from their signed-in session (Admin → Teachers)
+--   * the SERVER (service role) changes `activated`, credits/debits the wallet through the existing payment
+--     and payout triggers, and cleans the row up on account deletion
+--   * the signup trigger (handle_new_user) creates the row
+--   * no page reads any OTHER person's teacher_profiles row
+--
+-- After this migration:
+--   * a person can read only their own row; admins can read all; the public can read nothing
+--   * a teacher can still update their own non-privileged fields (bio, specialty, payout details)
+--   * `approved` can be changed only by an administrator
+--   * `wallet_balance` can be changed only by the server / SQL — not by any browser session, admins included
+--   * nobody can insert or delete a teacher_profiles row from a browser
+-- Nothing else is touched.
+
+-- ------------------------------------------------------------
+-- Row level security
+-- ------------------------------------------------------------
+
+drop policy if exists "teacher_profile_public_read" on teacher_profiles;
+drop policy if exists "teacher_profile_owner" on teacher_profiles;
+drop policy if exists "teacher_profile_read_own_or_admin" on teacher_profiles;
+drop policy if exists "teacher_profile_update_own_or_admin" on teacher_profiles;
+
+create policy "teacher_profile_read_own_or_admin" on teacher_profiles for select
+  using (profile_id = auth.uid() or is_admin());
+
+create policy "teacher_profile_update_own_or_admin" on teacher_profiles for update
+  using (profile_id = auth.uid() or is_admin())
+  with check (profile_id = auth.uid() or is_admin());
+
+-- (No insert or delete policy on purpose: the row is created by the signup trigger and is removed together
+-- with the account. Both run as the database owner / service role, which row level security does not apply to.)
+
+-- Supabase grants new tables to the API roles by default. The public key (anon) gets nothing at all, and
+-- signed-in users can no longer insert, delete or truncate.
+revoke all on teacher_profiles from anon;
+revoke insert, delete, truncate on teacher_profiles from authenticated;
+
+-- ------------------------------------------------------------
+-- Guard the columns that carry money or trust
+-- ------------------------------------------------------------
+
+-- Same idea as guard_teacher_activation_columns (0002) and guard_profile_role (0004). It only restricts calls
+-- that come through the API with a user's or visitor's key: the service role, the SQL Editor and the
+-- database's own triggers (where auth.role() is 'service_role' or null) are unaffected.
+create or replace function guard_teacher_privileged_columns()
+returns trigger language plpgsql as $$
+begin
+  if auth.role() in ('anon', 'authenticated') then
+    if new.profile_id is distinct from old.profile_id then
+      raise exception 'A teacher record cannot be reassigned.';
+    end if;
+    if new.wallet_balance is distinct from old.wallet_balance then
+      raise exception 'A wallet balance can only be changed by the payment system.';
+    end if;
+    if new.approved is distinct from old.approved and not is_admin() then
+      raise exception 'Teacher approval can only be changed by an administrator.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_guard_teacher_privileged on teacher_profiles;
+create trigger trg_guard_teacher_privileged
+  before update on teacher_profiles
+  for each row execute function guard_teacher_privileged_columns();
+
+
+-- ############################################################################
 -- ## migrations/0013_payment_state_machine_and_ledger.sql
 -- ############################################################################
 
@@ -1807,3 +1899,53 @@ revoke all on function payment_state_machine() from public, anon, authenticated;
 revoke all on function payment_before_insert() from public, anon, authenticated;
 revoke all on function payment_no_delete_completed() from public, anon, authenticated;
 grant execute on function payment_split_teacher_pct() to service_role;
+
+
+-- ############################################################################
+-- ## migrations/0015_hide_payer_phone.sql
+-- ############################################################################
+
+-- Modern Talent Hub — hide the payer's phone number from browsers (privacy fix for Phase 2A).
+-- Run after 0013_payment_state_machine_and_ledger.sql. Safe to run more than once.
+-- (Numbered 0015 because 0014 is already used by the separate messaging work.)
+--
+-- Phase 2A stores the number the STK prompt was sent to in payment_transactions.phone, and the number a
+-- callback reports in callback_phone. The existing read policy (transactions_read_own, 0001) lets the COACH
+-- read every column of their students' payment rows, so a coach could read the payer's number — often a
+-- child's or a parent's. 0013 said this must be closed in the same release that starts storing the numbers,
+-- with "explicit column lists in those pages plus column-level privileges". That is exactly what this does.
+--
+-- After this migration:
+--   * No browser session (student, coach or admin) can select phone or callback_phone directly. Every other
+--     column stays readable exactly as before, still limited to the rows the existing policy allows.
+--   * The paying student, and administrators, can still see a payment's numbers through
+--     payment_payer_phone(), which checks who is asking. A coach gets nothing from it.
+--   * The server (service role) is unchanged: it still reads and writes both columns for verification and
+--     reconciliation. The columns themselves are unchanged and nothing is deleted.
+--
+-- Fail-closed note: a column added to payment_transactions later is NOT readable by browsers until it is
+-- added to the grant below.
+
+revoke select on payment_transactions from authenticated;
+grant select (
+  id, subscription_id, student_id, teacher_id, amount, currency, provider, provider_reference,
+  checkout_request_id, status, teacher_share, platform_share, created_at, completed_at,
+  expected_amount, merchant_request_id, result_code, result_desc, callback_amount, paid_at, confirmed_via,
+  callback_received_at, last_queried_at, query_attempts, teacher_pct, platform_pct, credited_at,
+  needs_review, phone_mismatch
+) on payment_transactions to authenticated;
+
+-- The payer's numbers for ONE payment, for the paying student or an administrator only. Anyone else — the
+-- coach included — gets no row, exactly as if the payment did not exist.
+create or replace function payment_payer_phone(p_transaction uuid)
+returns table (phone text, callback_phone text)
+language sql stable security definer set search_path = public as $$
+  select pt.phone, pt.callback_phone
+  from payment_transactions pt
+  where pt.id = p_transaction
+    and auth.uid() is not null
+    and (pt.student_id = auth.uid() or is_admin());
+$$;
+
+revoke all on function payment_payer_phone(uuid) from public, anon;
+grant execute on function payment_payer_phone(uuid) to authenticated, service_role;

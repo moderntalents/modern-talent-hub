@@ -7,6 +7,7 @@ import { formatKes } from "@/lib/constants";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PAYMENT_VISIBLE_COLUMNS } from "@/lib/payment-columns";
 
 export default async function TeacherHome() {
   const session = await getSessionProfile();
@@ -23,7 +24,7 @@ export default async function TeacherHome() {
         .eq("status", "active"),
       supabase
         .from("payment_transactions")
-        .select("*")
+        .select(PAYMENT_VISIBLE_COLUMNS)
         .eq("teacher_id", session!.user.id)
         .order("created_at", { ascending: false })
         .limit(5),
