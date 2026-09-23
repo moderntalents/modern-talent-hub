@@ -326,6 +326,62 @@ describe("turning 18 (worked out on the day — no birthday job)", () => {
     assert.equal(await canSend(student, c), "ok");
   });
 
+  test("Option A: permission granted, then withdrawn under 18 — at 18 messaging is back for both people", async () => {
+    // Under 18 today (18th birthday is tomorrow, Kenya date), platform consent granted.
+    const dob = birthdayFor(18, 1);
+    const student = await newMinor(dob);
+    const send = (sender: string, conv: string, body: string) =>
+      scalar<string>("select send_message($1, $2, $3, 'message', null, null, null) as r", [sender, conv, body]);
+    const readable = (actor: Actor, conv: string) =>
+      as(db, actor, async () => (await db.query("select id from messages where conversation_id = $1", [conv])).rows.length);
+
+    // The guardian grants messaging (v2 wording); a conversation with messages exists.
+    assert.equal(await decideMessaging(await request(student, { purpose: "messaging" }), "approved"), "approved");
+    const c = await fromLesson(student);
+    await send(student, c, "question before withdrawal");
+    await send(ID.T1, c, "answer before withdrawal");
+
+    // The guardian then withdraws messaging while the student is still 17.
+    assert.equal(await withdraw(student), "withdrawn");
+    assert.equal(await cleared(student), false);
+    assert.equal(await visible({ id: student }), 0);
+    assert.equal(await visible({ id: ID.T1 }), 0);
+    assert.equal(await canSend(student, c), "not_permitted");
+
+    // The existing Kenya/Nairobi age calculation: 17 until the 18th birthday starts at 00:00 in Nairobi.
+    const t = todayInKenya();
+    const nairobiMidnightTomorrow = new Date(Date.UTC(t.y, t.m - 1, t.d + 1) - 3 * 3600 * 1000);
+    const justBefore = new Date(nairobiMidnightTomorrow.getTime() - 1000).toISOString();
+    assert.equal(await scalar<number>("select age_in_years_kenya($1::date, $2::timestamptz) as r", [dob, justBefore]), 17);
+    assert.equal(await scalar<number>("select age_in_years_kenya($1::date, $2::timestamptz) as r", [dob, nairobiMidnightTomorrow.toISOString()]), 18);
+    assert.equal(await cleared(student, justBefore), false);
+    assert.equal(await cleared(student, nairobiMidnightTomorrow.toISOString()), true, "allowed from the 18th birthday despite the withdrawal");
+
+    // The live gates use the current time, so move the birthday to today — the same as one day passing.
+    await db.query("update age_records set date_of_birth = $2 where profile_id = $1", [student, birthdayFor(18)]);
+    assert.equal(await cleared(student), true);
+
+    // The old conversation is visible again to BOTH people, with its messages.
+    assert.equal(await visible({ id: student }), 1);
+    assert.equal(await visible({ id: ID.T1 }), 1);
+    assert.equal(await readable({ id: student }, c), 2);
+    assert.equal(await readable({ id: ID.T1 }, c), 2);
+
+    // Sending is allowed again in both directions, and the new messages are readable by both.
+    assert.equal(await canSend(student, c), "ok");
+    assert.equal(await canSend(ID.T1, c), "ok");
+    await send(student, c, "hello again at 18");
+    await send(ID.T1, c, "welcome back");
+    assert.equal(await readable({ id: student }, c), 4);
+    assert.equal(await readable({ id: ID.T1 }, c), 4);
+
+    // Platform consent is untouched; the historical withdrawal is kept but no longer applies.
+    const r = await record(student);
+    assert.equal(r.consent_status, "granted");
+    assert.equal(r.guardian_messaging_status, "withdrawn");
+    assert.equal(r.guardian_messaging_allowed, false);
+  });
+
   test("18 or over does NOT override a missing or declined PLATFORM consent", async () => {
     const student = await newMinor(birthdayFor(19));
     for (const status of ["pending", "declined"]) {
