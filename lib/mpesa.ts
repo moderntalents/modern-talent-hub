@@ -302,26 +302,102 @@ export async function queryStkPushStatus(checkoutRequestId: string): Promise<Stk
   };
 }
 
+const B2C_TIMEOUT_MS = 20_000;
+
+// B2C needs credentials beyond the PayBill STK ones above: Safaricom issues these
+// separately, only once a Paybill has B2C enabled (a distinct production application
+// review from plain collections). See .env.example for how to obtain them.
+export function isB2CConfigured() {
+  return Boolean(
+    isMpesaConfigured() &&
+      process.env.MPESA_INITIATOR_NAME &&
+      process.env.MPESA_SECURITY_CREDENTIAL &&
+      process.env.MPESA_B2C_RESULT_URL &&
+      process.env.MPESA_B2C_TIMEOUT_URL,
+  );
+}
+
+function requireB2CConfigured() {
+  if (!isB2CConfigured()) {
+    throw new Error(
+      "M-Pesa B2C payouts are not configured on this deployment. Set MPESA_INITIATOR_NAME, " +
+        "MPESA_SECURITY_CREDENTIAL, MPESA_B2C_RESULT_URL and MPESA_B2C_TIMEOUT_URL (in addition " +
+        "to the base MPESA_* settings).",
+    );
+  }
+}
+
+export interface B2CPayoutResult {
+  conversationId: string;
+  originatorConversationId: string;
+  responseDescription: string;
+}
+
 /**
- * Business-to-Customer payout (teacher withdrawal to M-Pesa).
+ * Business-to-Customer payout (coach withdrawal to M-Pesa).
  *
- * NOT YET IMPLEMENTED — out of scope for this phase. Safaricom's B2C API
- * requires a separate production application review (a registered Paybill
- * with B2C enabled, an initiator name/credential, and a security-credential
- * generated from Safaricom's public certificate) that most new developer
- * accounts don't have by default. Wire this up once that approval is in
- * place — the withdrawal ledger (supabase/migrations/0001_init.sql,
- * withdrawal_requests table) is already built to record a real "processing"
- * -> "completed" transition once this function actually moves money;
- * nothing in this codebase marks a withdrawal completed on its own.
+ * Returns once Daraja has ACCEPTED the request for processing — this is not
+ * proof the coach received the money. The actual outcome (success or
+ * failure) only ever arrives via the B2C result callback
+ * (app/api/mpesa/b2c-callback/[secret]/route.ts); nothing here marks a
+ * withdrawal completed.
  */
-export async function initiateB2CPayout(_params: {
-  phoneNumber: string;
+export async function initiateB2CPayout(params: {
+  phoneNumber: string; // format 2547XXXXXXXX
   amount: number;
   remarks: string;
-}): Promise<never> {
-  throw new Error(
-    "M-Pesa B2C payouts are not implemented yet. Withdrawals must be reviewed " +
-      "and processed manually (see /admin/withdrawals) until this is wired up.",
+  originatorConversationId: string; // our own idempotency key for this attempt
+}): Promise<B2CPayoutResult> {
+  requireB2CConfigured();
+
+  const amount = validatePaymentAmount(params.amount);
+
+  if (!isValidMsisdn(params.phoneNumber)) {
+    throw new Error("Phone number must be a valid Kenyan M-Pesa number (2547XXXXXXXX or 2541XXXXXXXX).");
+  }
+  if (!params.originatorConversationId) {
+    throw new Error("originatorConversationId is required for a B2C payout.");
+  }
+
+  const token = await getAccessToken();
+
+  const res = await fetchWithTimeout(
+    `${baseUrl()}/mpesa/b2c/v3/paymentrequest`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        OriginatorConversationID: params.originatorConversationId,
+        InitiatorName: process.env.MPESA_INITIATOR_NAME,
+        SecurityCredential: process.env.MPESA_SECURITY_CREDENTIAL,
+        CommandID: "BusinessPayment",
+        Amount: amount,
+        PartyA: process.env.MPESA_SHORTCODE,
+        PartyB: params.phoneNumber,
+        Remarks: params.remarks.slice(0, 100),
+        QueueTimeOutURL: process.env.MPESA_B2C_TIMEOUT_URL,
+        ResultURL: process.env.MPESA_B2C_RESULT_URL,
+        Occasion: "",
+      }),
+    },
+    B2C_TIMEOUT_MS,
+    "B2C payout",
   );
+
+  const data = await res.json().catch(() => null);
+  // Deliberately no response body in errors beyond ResponseDescription: Daraja's B2C
+  // error payloads can echo request details, and SecurityCredential must never surface
+  // in a log or an error message a caller might display.
+  if (!res.ok || !data || String(data.ResponseCode) !== "0") {
+    throw new Error(data?.errorMessage || data?.ResponseDescription || "B2C payout request failed");
+  }
+
+  return {
+    conversationId: data.ConversationID,
+    originatorConversationId: data.OriginatorConversationID,
+    responseDescription: data.ResponseDescription,
+  };
 }

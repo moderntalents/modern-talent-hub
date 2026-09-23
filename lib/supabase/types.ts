@@ -407,6 +407,12 @@ export interface Database {
           processed_at: string | null;
           provider_reference: string | null;
           notes: string | null;
+          // Added by 0016_coach_b2c_withdrawal.sql
+          conversation_id: string | null;
+          originator_conversation_id: string | null;
+          result_code: number | null;
+          result_desc: string | null;
+          reserved_at: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["withdrawal_requests"]["Row"]> & {
           teacher_id: string;

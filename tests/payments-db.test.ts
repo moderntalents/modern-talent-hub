@@ -545,15 +545,20 @@ describe("browser and server protections", () => {
 
 // ==================================================================================================
 describe("the existing coach wallet and withdrawal system keeps working", () => {
+  // Uses method 'bank' explicitly: 0016 (coach-b2c-withdrawal branch) gives 'mpesa'
+  // withdrawals a new atomic-reservation-at-insert behavior (see
+  // tests/coach-b2c-withdrawal.test.ts) — 'bank' is the one Phase 1 path 0016
+  // deliberately leaves untouched, so this test keeps validating exactly the original,
+  // unchanged mechanic: request at insert time, debit only at 'successful'.
   test("a payment credit can be requested, paid out and reversed with the existing rules", async () => {
     const p = await newPayment(db, { amount: 1000 });
     await completeAsExpected(db, p); // coach T2 now has 700
     assert.equal((await wallets(db)).teacher(ID.T2), 700);
 
-    const req = await attempt({ id: ID.T2 }, "insert into withdrawal_requests (teacher_id, amount, destination) values ($1, 500, '0711222333') returning id, status", [ID.T2]);
+    const req = await attempt({ id: ID.T2 }, "insert into withdrawal_requests (teacher_id, amount, method, destination) values ($1, 500, 'bank', '0711222333') returning id, status", [ID.T2]);
     assert.ok(req.ok, "a coach can still request up to their balance");
     const wid = (req as unknown as { rows: { id: string }[] }).rows[0].id;
-    assert.ok(raised(await attempt({ id: ID.T2 }, "insert into withdrawal_requests (teacher_id, amount, destination) values ($1, 701, 'x')", [ID.T2]), /exceeds/), "…but not more");
+    assert.ok(raised(await attempt({ id: ID.T2 }, "insert into withdrawal_requests (teacher_id, amount, method, destination) values ($1, 701, 'bank', 'x')", [ID.T2]), /exceeds/), "…but not more");
 
     assert.ok((await attempt("service", "update withdrawal_requests set status = 'successful', provider_reference = 'PAYOUT-1' where id = $1", [wid])).ok);
     assert.equal((await wallets(db)).teacher(ID.T2), 200, "the payout debited the wallet");
@@ -565,7 +570,7 @@ describe("the existing coach wallet and withdrawal system keeps working", () => 
   test("the ledger is shaped for future withdrawal entries (debit / reversal), with the right sign and uniqueness rules", async () => {
     const p = await newPayment(db, { amount: 1000 });
     await completeAsExpected(db, p);
-    await db.query("insert into withdrawal_requests (teacher_id, amount, destination) values ($1, 100, 'x')", [ID.T2]);
+    await db.query("insert into withdrawal_requests (teacher_id, amount, method, destination) values ($1, 100, 'bank', 'x')", [ID.T2]);
     const w = (await one("select id from withdrawal_requests limit 1")).id;
     const ins = (type: string, amount: number) => db.query("insert into wallet_ledger (account_type, teacher_id, entry_type, amount, balance_after, withdrawal_request_id) values ('teacher', $1, $2, $3, 600, $4)", [ID.T2, type, amount, w]);
     await ins("withdrawal_debit", -100);

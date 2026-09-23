@@ -10,7 +10,10 @@ export function WithdrawForm({ walletBalance, defaultPhone }: { walletBalance: n
   const router = useRouter();
   const [method, setMethod] = useState<"mpesa" | "bank">("mpesa");
   const [amount, setAmount] = useState("");
-  const [destination, setDestination] = useState(defaultPhone);
+  // Bank destination is still freely typed (that path is unchanged and manual). M-Pesa
+  // withdrawals are always paid to the coach's own registered number — the server
+  // ignores anything sent here for that method, so this field isn't even shown for it.
+  const [bankDestination, setBankDestination] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -29,8 +32,12 @@ export function WithdrawForm({ walletBalance, defaultPhone }: { walletBalance: n
       setError(`You can withdraw up to ${walletBalance.toLocaleString()} KSh.`);
       return;
     }
-    if (!destination.trim()) {
-      setError(method === "mpesa" ? "Enter your M-Pesa number." : "Enter your bank account details.");
+    if (method === "mpesa" && !defaultPhone) {
+      setError("No M-Pesa number is registered on your profile yet — add one before withdrawing.");
+      return;
+    }
+    if (method === "bank" && !bankDestination.trim()) {
+      setError("Enter your bank account details.");
       return;
     }
 
@@ -39,7 +46,11 @@ export function WithdrawForm({ walletBalance, defaultPhone }: { walletBalance: n
       const res = await fetch("/api/withdrawals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: numAmount, destination, method }),
+        body: JSON.stringify({
+          amount: numAmount,
+          method,
+          ...(method === "bank" ? { destination: bankDestination } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not submit withdrawal request.");
@@ -64,16 +75,24 @@ export function WithdrawForm({ walletBalance, defaultPhone }: { walletBalance: n
       <Field label="Amount (KSh)" hint={`Available: ${walletBalance.toLocaleString()} KSh`}>
         <Input type="number" min={1} max={walletBalance} value={amount} onChange={(e) => setAmount(e.target.value)} />
       </Field>
-      <Field label={method === "mpesa" ? "M-Pesa number" : "Bank account details"}>
-        <Input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder={method === "mpesa" ? "07XX XXX XXX" : "Bank name & account number"} />
-      </Field>
+      {method === "mpesa" ? (
+        <Field label="M-Pesa number" hint="Paid out to your registered number — update it in your profile to change it.">
+          <Input value={defaultPhone || "No number registered"} disabled readOnly />
+        </Field>
+      ) : (
+        <Field label="Bank account details">
+          <Input value={bankDestination} onChange={(e) => setBankDestination(e.target.value)} placeholder="Bank name & account number" />
+        </Field>
+      )}
       {error && <ErrorBanner message={error} />}
       {success && (
         <p className="text-sm font-medium text-[var(--success-text)]">
-          Withdrawal request submitted — an admin will review and process it.
+          {method === "mpesa"
+            ? "Withdrawal submitted — you'll be paid out via M-Pesa shortly."
+            : "Withdrawal request submitted — an admin will review and process it."}
         </p>
       )}
-      <Button type="submit" loading={loading} disabled={walletBalance <= 0}>
+      <Button type="submit" loading={loading} disabled={walletBalance <= 0 || (method === "mpesa" && !defaultPhone)}>
         Request withdrawal
       </Button>
     </form>

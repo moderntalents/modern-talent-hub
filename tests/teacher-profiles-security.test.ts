@@ -179,15 +179,19 @@ describe("AFTER 0012: attacks fail, legitimate flows keep working", () => {
       assert.ok(r.ok && r.rows[0].share === 700);
       assert.equal(await balance(ID.T2), 700);
     });
+    // method 'bank' explicitly: the coach-b2c-withdrawal branch (0016) gives 'mpesa'
+    // withdrawals a new atomic-reservation-at-insert behavior (its own dedicated tests
+    // cover that); 'bank' is the Phase 1 path 0016 deliberately leaves untouched, so
+    // these three keep validating exactly the original, unchanged mechanic.
     test("20. a teacher can still REQUEST a withdrawal up to their real balance", async () => {
-      const r = await attempt({ id: ID.T1 }, "insert into withdrawal_requests (teacher_id, amount, destination) values ($1, 1000, '0711222333') returning status", [ID.T1]);
+      const r = await attempt({ id: ID.T1 }, "insert into withdrawal_requests (teacher_id, amount, method, destination) values ($1, 1000, 'bank', '0711222333') returning status", [ID.T1]);
       assert.ok(r.ok && r.rows[0].status === "pending");
     });
     test("21. …but not more than it (the original forged-balance attack is stopped)", async () => {
-      assert.ok(raised(await attempt({ id: ID.T1 }, "insert into withdrawal_requests (teacher_id, amount, destination) values ($1, 900000, '0711222333')", [ID.T1]), /exceeds/));
+      assert.ok(raised(await attempt({ id: ID.T1 }, "insert into withdrawal_requests (teacher_id, amount, method, destination) values ($1, 900000, 'bank', '0711222333')", [ID.T1]), /exceeds/));
     });
     test("22. processing a payout (service role) still debits the wallet", async () => {
-      await db.query("insert into withdrawal_requests (teacher_id, amount, destination) values ($1, 1000, '0711222333')", [ID.T1]);
+      await db.query("insert into withdrawal_requests (teacher_id, amount, method, destination) values ($1, 1000, 'bank', '0711222333')", [ID.T1]);
       const r = await attempt("service", "update withdrawal_requests set status = 'successful', provider_reference = 'X' where teacher_id = $1 returning status", [ID.T1]);
       assert.ok(r.ok && r.rows.length === 1);
       assert.equal(await balance(ID.T1), 4000);
