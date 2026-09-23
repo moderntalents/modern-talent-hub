@@ -17,7 +17,8 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
   const { lessonId } = await params;
   const session = await getSessionProfile();
   const supabase = await createClient();
-  const canMessage = (await getMessagingState(session!.user.id)).kind === "allowed";
+  const messagingState = await getMessagingState(session!.user.id);
+  const canMessage = messagingState.kind === "allowed";
 
   const [{ data: lesson }, { data: materials }, { data: assignment }] = await Promise.all([
     supabase.from("lessons").select("*, subjects(name)").eq("id", lessonId).single(),
@@ -80,7 +81,7 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
               variant="outline"
             />
           ) : (
-            <MessagingLockedNote />
+            <MessagingLockedNote state={messagingState} />
           )}
         </Card>
       )}

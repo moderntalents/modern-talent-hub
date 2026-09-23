@@ -21,7 +21,8 @@ export default async function ActivityDetailPage({
   const { activityId } = await params;
   const session = await getSessionProfile();
   const supabase = await createClient();
-  const canMessage = (await getMessagingState(session!.user.id)).kind === "allowed";
+  const messagingState = await getMessagingState(session!.user.id);
+  const canMessage = messagingState.kind === "allowed";
 
   const [{ data: activity }, { data: materials }, { data: subscription }] = await Promise.all([
     supabase.from("activities").select("*, profiles(full_name)").eq("id", activityId).single(),
@@ -97,7 +98,7 @@ export default async function ActivityDetailPage({
               variant="outline"
             />
           ) : (
-            <MessagingLockedNote />
+            <MessagingLockedNote state={messagingState} />
           )}
         </Card>
       )}
