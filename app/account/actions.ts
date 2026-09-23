@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CONTACT_EMAIL } from "@/lib/legal";
+import { removeUserMessaging } from "@/lib/messages/service";
 
 // "Delete my account" — the in-app deletion path Google Play requires.
 //
@@ -201,6 +202,11 @@ export async function deleteMyAccount(confirmation: string): Promise<DeleteAccou
 
     if (profile.role === "student") await removeStudentFiles(admin, user.id);
     if (profile.role === "teacher") await cleanUpTeacherContent(admin, user.id);
+
+    // Messages: every conversation this person is in, with its messages and PDFs, is removed for both
+    // people. Needed on BOTH paths below — the scrub path keeps the profile row, so nothing would
+    // cascade — and it throws if a file can't be removed, so the deletion can simply be retried.
+    await removeUserMessaging(admin, user.id);
 
     if (keepRecords) {
       await scrubAccount(admin, user.id);

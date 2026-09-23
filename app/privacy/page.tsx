@@ -39,7 +39,8 @@ export default function PrivacyPolicyPage() {
         </li>
         <li>Your date of birth, so we know whether a parent or guardian needs to give permission.</li>
         <li>
-          If you are under 18: your parent or guardian’s email address, and a record of whether they approved or declined
+          If you are under 18: your parent or guardian’s email address, a record of whether they approved or declined your
+          account, and — separately — whether they allowed private messaging, with the version of the wording they saw
           (see “Children”).
         </li>
         <li>Whether you are a student, teacher or administrator.</li>
@@ -52,12 +53,14 @@ export default function PrivacyPolicyPage() {
       <UL>
         <li>Your grade or class and, if you choose to give it, your school.</li>
         <li>The activities you join, and the assignments and files you upload.</li>
+        <li>The messages you send to your teachers and coaches, and any PDF files (such as completed homework) you attach to them.</li>
         <li>The live classes you join and when you joined them.</li>
       </UL>
       <P><strong>Teachers and coaches</strong></P>
       <UL>
         <li>What you teach and an optional short bio.</li>
         <li>The lessons, activities, videos and files you create and upload.</li>
+        <li>The messages you exchange with students, including homework you send and the PDF files students hand in.</li>
         <li>Payout details you enter to withdraw earnings (an M-Pesa number or bank account details) and your wallet and payout records.</li>
         <li>Live classes you host, and the list of students who joined.</li>
       </UL>
@@ -71,8 +74,8 @@ export default function PrivacyPolicyPage() {
           not record live classes.
         </li>
         <li>
-          Live classes have a group text chat. Your name is shown to the other people in the class. We do not offer private
-          messages between users.
+          Live classes have a group text chat. Your name is shown to the other people in the class. Private messages with
+          your teachers are separate (see “Messages” and “Children”).
         </li>
       </UL>
       <P><strong>Payments</strong></P>
@@ -103,6 +106,7 @@ export default function PrivacyPolicyPage() {
       <UL>
         <li>To create and secure your account and to verify your email.</li>
         <li>To provide lessons, activities, assignments, live classes and teacher–student communication inside classes.</li>
+        <li>To let students and their teachers exchange private messages and homework files.</li>
         <li>To let teachers see who is in their classes, and to let administrators approve teachers and look after the platform.</li>
         <li>To process payments and payouts and to keep the records the law requires.</li>
         <li>To keep the service safe, prevent misuse and fix problems.</li>
@@ -122,8 +126,9 @@ export default function PrivacyPolicyPage() {
       </UL>
       <P>
         Inside the platform, teachers can see the names of the students in their classes and activities, and
-        administrators can see account details so they can run the service. We may also disclose information if the law
-        requires it or to protect people’s safety.
+        administrators can see account details so they can run the service. Messages, and the files attached to them, can
+        be read only by the student and the teacher in that conversation; administrators cannot open them through the
+        app. We may also disclose information if the law requires it or to protect people’s safety.
       </P>
       <P>
         Some of our service providers may process information outside Kenya, including in the United States. We choose
@@ -149,14 +154,24 @@ export default function PrivacyPolicyPage() {
         <li>People who already had an account when we introduced this are asked for their date of birth the next time they sign in.</li>
         <li>We show no advertising, we do not sell children’s information, and we do not track children for marketing.</li>
         <li>We do not collect a child’s location, contacts or advertising ID.</li>
-        <li>Children cannot send private messages.</li>
+        <li>
+          <strong>Private messaging needs its own permission.</strong> Approving the account does not switch on messaging.
+          For anyone under 18, a parent or guardian must separately choose to allow private messages; until they do, messaging
+          is off and the rest of the account works as normal. Saying no, or later switching messaging off, never changes the
+          account approval and never deletes the account. Permissions given before we introduced messaging do not cover it.
+          From their 18th birthday, a student with an approved account can use messaging automatically.
+        </li>
+        <li>
+          With messaging allowed, a student can send private messages — with an optional PDF attachment — only to their own
+          teachers and coaches, never to other students. Those messages are visible only to the student and that teacher.
+        </li>
         <li>
           When you join a live class you first see a screen to check your camera and microphone. Your microphone starts
           off; your camera may be on when you join. You can turn either off at any time.
         </li>
         <li>
           <strong>Parents and guardians:</strong> you can ask us at any time to show you what we hold about your child, to correct it,
-          or to delete your child’s account and data, or to withdraw your permission — email us at{" "}
+          or to delete your child’s account and data, or to withdraw your permission for the account or for messaging only — email us at{" "}
           <a href={`mailto:${CONTACT_EMAIL}`} className="font-semibold text-brand-cyan-deep">{CONTACT_EMAIL}</a> from the email
           address on the account or the parent or guardian address we have on record, or see “Deleting your account”. If you believe a child has given us information without
           your permission, tell us and we will delete it.
@@ -167,8 +182,12 @@ export default function PrivacyPolicyPage() {
       <UL>
         <li>Your account information and content are kept while your account exists and are deleted when you delete it.</li>
         <li>
-          Your date of birth, and a parent or guardian’s email address and their answer, are kept only while your account
-          exists and are deleted with it.
+          Messages and their attached PDF files are kept while the conversation exists. If either person deletes their
+          account, the whole conversation — every message and file in it — is deleted for both people.
+        </li>
+        <li>
+          Your date of birth, and a parent or guardian’s email address and their answers (for the account and for
+          messaging), are kept only while your account exists and are deleted with it.
         </li>
         <li>
           Payment and payout records are kept for as long as tax and accounting law requires. When you delete your account,
@@ -209,6 +228,10 @@ export default function PrivacyPolicyPage() {
           Uploaded files are not public. Lesson and activity files can be opened only by signed-in users, through
           short-lived links. Students’ assignment files can be seen only by the student and their teacher. Access rules
           also restrict who can see which records.
+        </li>
+        <li>
+          PDF files attached to messages are private. They can be opened only by the student and the teacher in that
+          conversation, through links that stop working after about a minute, and only PDF files up to 10 MB are accepted.
         </li>
         <li>Teachers are approved by an administrator before they can publish content.</li>
       </UL>

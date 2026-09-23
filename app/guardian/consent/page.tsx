@@ -3,6 +3,7 @@ import Link from "next/link";
 import { H2, LegalPage, P, UL } from "@/components/legal/LegalPage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hashToken } from "@/lib/consent";
+import { coversMessaging } from "@/lib/consent-versions";
 import { CONTACT_EMAIL } from "@/lib/legal";
 import { decideConsent } from "./actions";
 
@@ -29,11 +30,13 @@ export default async function GuardianConsentPage({ searchParams }: { searchPara
   const admin = createAdminClient();
   const { data: request } = await admin
     .from("guardian_consent_requests")
-    .select("profile_id, guardian_email, expires_at, decided_at")
+    .select("profile_id, guardian_email, expires_at, decided_at, purpose, consent_version")
     .eq("token_hash", hashToken(token))
     .maybeSingle();
 
-  if (!request) return problem("This link isn't valid", "Please use the newest email we sent you.");
+  if (!request || request.purpose !== "platform") {
+    return problem("This link isn't valid", "Please use the newest email we sent you.");
+  }
   if (request.decided_at) return problem("Already answered", "This request has already been answered. Thank you.");
   if (new Date(request.expires_at) < new Date()) {
     return problem(
@@ -55,6 +58,8 @@ export default async function GuardianConsentPage({ searchParams }: { searchPara
   }
 
   const name = profile?.full_name || "the young person";
+  // Only requests sent with wording that covers messaging (guardian-v2 or later) can allow it here.
+  const canChooseMessaging = coversMessaging(request.consent_version);
 
   return (
     <LegalPage title="Parent or guardian permission">
@@ -79,8 +84,26 @@ export default async function GuardianConsentPage({ searchParams }: { searchPara
           to check their camera and microphone. Their microphone starts off; their camera may be on when they join. They can
           turn either off at any time.
         </li>
-        <li>We do not record live classes. There is a group text chat; there are no private messages between users.</li>
+        <li>We do not record live classes. There is a group text chat during a live class.</li>
         <li>Teachers can see the names of the students in their classes and activities.</li>
+      </UL>
+
+      <H2>Private messages with teachers (optional)</H2>
+      <UL>
+        <li>
+          The app has private messages between a student and their own teachers — for questions, and for sending and
+          handing in homework as PDF files. Students can only message teachers of lessons they can open or activities
+          they are enrolled in; they cannot message other students.
+        </li>
+        <li>
+          Messaging is <strong>off</strong> for anyone under 18 unless you allow it. It is a separate choice: saying no
+          to messaging does not affect the rest of the account.
+        </li>
+        <li>
+          Messages are private to the two people in the conversation. Our administrators have no access to them in the
+          app. They are deleted when either account is deleted.
+        </li>
+        <li>You can switch messaging off again at any time by emailing us. At 18, messaging switches on automatically.</li>
       </UL>
 
       <H2>Your choices</H2>
@@ -102,24 +125,45 @@ export default async function GuardianConsentPage({ searchParams }: { searchPara
         </li>
       </UL>
 
-      <form action={decideConsent} className="mt-4 flex flex-col gap-3 sm:flex-row">
+      <form action={decideConsent} className="mt-4 flex flex-col gap-3">
         <input type="hidden" name="token" value={token} />
-        <button
-          type="submit"
-          name="decision"
-          value="approved"
-          className="min-h-12 flex-1 rounded-xl bg-brand-cyan px-5 text-sm font-bold text-ink hover:opacity-90"
-        >
-          I approve
-        </button>
-        <button
-          type="submit"
-          name="decision"
-          value="declined"
-          className="min-h-12 flex-1 rounded-xl border border-line bg-surface px-5 text-sm font-bold text-ink hover:bg-surface-2"
-        >
-          I decline
-        </button>
+        {canChooseMessaging ? (
+          <fieldset className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-4">
+            <legend className="px-1 text-sm font-bold">Private messages with teachers</legend>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="radio" name="messaging" value="declined" defaultChecked className="mt-1" />
+              <span>Don&apos;t allow messaging for now</span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="radio" name="messaging" value="approved" className="mt-1" />
+              <span>Allow private messages with their teachers</span>
+            </label>
+            <p className="text-xs text-ink-faint">This choice only applies if you approve below.</p>
+          </fieldset>
+        ) : (
+          <p className="rounded-xl border border-line bg-surface-2 p-4 text-sm">
+            Private messaging stays off with this approval. If {name} wants it later, they can ask you separately and you
+            will get another email.
+          </p>
+        )}
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button
+            type="submit"
+            name="decision"
+            value="approved"
+            className="min-h-12 flex-1 rounded-xl bg-brand-cyan px-5 text-sm font-bold text-ink hover:opacity-90"
+          >
+            I approve
+          </button>
+          <button
+            type="submit"
+            name="decision"
+            value="declined"
+            className="min-h-12 flex-1 rounded-xl border border-line bg-surface px-5 text-sm font-bold text-ink hover:bg-surface-2"
+          >
+            I decline
+          </button>
+        </div>
       </form>
     </LegalPage>
   );

@@ -701,6 +701,11 @@ export interface Database {
           consent_status: "not_required" | "pending" | "granted" | "declined";
           consent_decided_at: string | null;
           created_at: string;
+          // 0014_messaging_guardian_consent.sql — separate guardian permission for private messaging.
+          guardian_messaging_allowed: boolean;
+          guardian_messaging_status: "not_requested" | "granted" | "declined" | "withdrawn";
+          guardian_messaging_version: string | null;
+          guardian_messaging_decided_at: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["age_records"]["Row"]> & {
           profile_id: string;
@@ -728,6 +733,11 @@ export interface Database {
           decided_at: string | null;
           decision: "approved" | "declined" | null;
           created_at: string;
+          // 0014_messaging_guardian_consent.sql
+          purpose: "platform" | "messaging";
+          consent_version: string;
+          messaging_decision: "approved" | "declined" | null;
+          messaging_decided_at: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["guardian_consent_requests"]["Row"]> & {
           profile_id: string;
@@ -740,6 +750,87 @@ export interface Database {
           {
             foreignKeyName: "guardian_consent_requests_profile_id_fkey";
             columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // 0014_messaging_guardian_consent.sql — server-only list of guardian consent wording versions.
+      guardian_consent_versions: {
+        Row: {
+          version: string;
+          covers_messaging: boolean;
+          summary: string;
+          introduced_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["guardian_consent_versions"]["Row"]> & {
+          version: string;
+          covers_messaging: boolean;
+          summary: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["guardian_consent_versions"]["Row"]>;
+        Relationships: [];
+      };
+      // 0011_messaging.sql — read by the two people in a conversation; written by server code only.
+      conversations: {
+        Row: {
+          id: string;
+          student_id: string;
+          teacher_id: string;
+          created_at: string;
+          last_message_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["conversations"]["Row"]> & {
+          student_id: string;
+          teacher_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["conversations"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "conversations_student_id_fkey";
+            columns: ["student_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "conversations_teacher_id_fkey";
+            columns: ["teacher_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      messages: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          sender_id: string;
+          kind: "message" | "homework" | "submission";
+          body: string;
+          attachment_path: string | null;
+          attachment_name: string | null;
+          attachment_size: number | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["messages"]["Row"]> & {
+          conversation_id: string;
+          sender_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["messages"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey";
+            columns: ["conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "conversations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey";
+            columns: ["sender_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -819,6 +910,68 @@ export interface Database {
       sweep_withdrawal_to_review: {
         Args: { p_withdrawal_id: string; p_reason: string };
         Returns: boolean;
+      };
+      // Server-only, from 0011_messaging.sql. Failures are raised as "messaging:<reason>".
+      start_conversation_from_lesson: {
+        Args: { p_student: string; p_lesson: string };
+        Returns: string;
+      };
+      start_conversation_from_activity: {
+        Args: { p_student: string; p_activity: string };
+        Returns: string;
+      };
+      start_conversation_as_teacher: {
+        Args: { p_teacher: string; p_student: string };
+        Returns: string;
+      };
+      messaging_can_send: {
+        Args: { p_user: string; p_conversation: string };
+        Returns: "ok" | "not_found" | "not_cleared" | "not_permitted" | "closed";
+      };
+      send_message: {
+        Args: {
+          p_sender: string;
+          p_conversation: string;
+          p_body: string;
+          p_kind: "message" | "homework" | "submission";
+          p_attachment_path: string | null;
+          p_attachment_name: string | null;
+          p_attachment_size: number | null;
+        };
+        Returns: string;
+      };
+      attachment_in_use: {
+        Args: { p_path: string };
+        Returns: boolean;
+      };
+      messaging_conversation_ids: {
+        Args: { p_user: string };
+        Returns: string[];
+      };
+      delete_user_messages: {
+        Args: { p_user: string };
+        Returns: number;
+      };
+      // Server-only, from 0014_messaging_guardian_consent.sql.
+      age_in_years_kenya: {
+        Args: { p_dob: string; p_at?: string };
+        Returns: number;
+      };
+      messaging_cleared: {
+        Args: { p_profile: string; p_at?: string };
+        Returns: boolean;
+      };
+      decide_guardian_consent_with_messaging: {
+        Args: { p_token_hash: string; p_decision: string; p_messaging: string | null };
+        Returns: "approved" | "declined" | "used" | "expired" | "invalid";
+      };
+      decide_guardian_messaging_consent: {
+        Args: { p_token_hash: string; p_decision: string };
+        Returns: "approved" | "declined" | "used" | "expired" | "invalid";
+      };
+      withdraw_guardian_messaging_consent: {
+        Args: { p_profile: string };
+        Returns: "withdrawn" | "no_record";
       };
     };
   };
