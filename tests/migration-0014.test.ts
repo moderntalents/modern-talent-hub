@@ -33,6 +33,15 @@ const NEW_FUNCTIONS = [
 ];
 const REWIRED = ["caller_can_read_conversation", "_open_conversation", "messaging_can_send"];
 
+// `upTo: "0014_..."` applies every migration file that sorts <= it — which, now that
+// 0012/0013 (the payment work) legitimately exist BETWEEN 0011 and 0014 in the migrations
+// folder, silently pulls them into the "after" snapshot too, misattributing their tables
+// to 0014. These two `include` filters pin the comparison to exactly "through 0011" and
+// "through 0011, plus 0014" — 0012/0013/0015+ excluded either way, regardless of what else
+// exists in the migrations folder.
+const BEFORE_0014 = { include: (f: string) => f < "0012" };
+const AFTER_0014 = { include: (f: string) => f < "0012" || f.startsWith("0014") };
+
 const list = (xs: string[]) => xs.map((x) => `'${x}'`).join(",");
 const newColumnPairs = Object.entries(NEW_COLUMNS).flatMap(([t, cs]) => cs.map((c) => `('${t}','${c}')`)).join(",");
 
@@ -53,10 +62,7 @@ async function snapshot(db: PGlite) {
 }
 
 test("0014 changes nothing that existed after 0011, except replacing the three messaging gates", async () => {
-  const [before, after] = await Promise.all([
-    createTestDb({ upTo: "0011_messaging.sql" }),
-    createTestDb({ upTo: "0014_messaging_guardian_consent.sql" }),
-  ]);
+  const [before, after] = await Promise.all([createTestDb(BEFORE_0014), createTestDb(AFTER_0014)]);
   const a = await snapshot(before);
   const b = await snapshot(after);
   for (const key of Object.keys(a) as (keyof typeof a)[]) {
@@ -66,10 +72,7 @@ test("0014 changes nothing that existed after 0011, except replacing the three m
 });
 
 test("consent_status, decide_guardian_consent() and age_cleared() are exactly as before", async () => {
-  const [before, after] = await Promise.all([
-    createTestDb({ upTo: "0011_messaging.sql" }),
-    createTestDb({ upTo: "0014_messaging_guardian_consent.sql" }),
-  ]);
+  const [before, after] = await Promise.all([createTestDb(BEFORE_0014), createTestDb(AFTER_0014)]);
   const defs = async (db: PGlite) =>
     (await db.query<{ proname: string; def: string; acl: string }>(
       "select proname, pg_get_functiondef(oid) as def, proacl::text as acl from pg_proc where proname in ('decide_guardian_consent', 'age_cleared') order by 1",
