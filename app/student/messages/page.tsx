@@ -62,7 +62,7 @@ export default async function StudentMessagesPage() {
                 from a parent or guardian&apos;s permission for messaging specifically.
               </p>
             </div>
-            <LinkButton href="/age-check" className="w-fit">
+            <LinkButton href="/account" className="w-fit">
               Finish account setup
             </LinkButton>
           </div>

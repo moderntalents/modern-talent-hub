@@ -71,7 +71,7 @@ export function AppShell({
           href="/account"
           className="mt-4 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2"
         >
-          Account &amp; privacy
+          Settings
         </Link>
         <button
           onClick={signOut}
@@ -96,7 +96,7 @@ export function AppShell({
           </div>
           <div className="flex items-center gap-4">
             <Link href="/account" className="text-xs font-semibold text-ink-soft">
-              Account
+              Settings
             </Link>
             <button onClick={signOut} className="text-xs font-semibold text-brand-red-deep">
               Sign out
