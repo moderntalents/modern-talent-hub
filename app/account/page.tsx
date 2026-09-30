@@ -3,13 +3,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { getAgeState, gateRedirect } from "@/lib/age-gate";
 import { accountSetupBanner } from "@/lib/account-setup-status";
-import { getMessagingState } from "@/lib/messaging-gate";
+import { getAccountStatus, MESSAGING_UNAVAILABLE_MESSAGE } from "@/lib/messaging-gate";
 import { CONTACT_EMAIL } from "@/lib/legal";
+import { ageGroup, ageInYears } from "@/lib/age";
+import { ageSummary } from "@/lib/age-summary";
+import { phoneEditable } from "@/lib/profile-edit";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { DeleteAccountPanel } from "./DeleteAccountPanel";
+import { ProfilePanel } from "./ProfilePanel";
 
 export const metadata: Metadata = { title: "Settings — Modern Talent Hub" };
 
@@ -29,13 +32,31 @@ export default async function AccountPage() {
   const { user, profile } = session;
   const role = profile.role;
 
-  // Age/guardian and messaging status only apply to students and teachers (not admins) — same
-  // gates the student/teacher layouts already enforce (lib/age-gate.ts, lib/messaging-gate.ts,
-  // both unchanged by this page). Settings never grants anything by itself: it only shows
-  // what's outstanding and links to the existing flow that actually resolves it.
-  const ageState = role === "admin" ? null : await getAgeState(await createClient(), user.id);
-  const setupBanner = ageState ? accountSetupBanner(ageState, gateRedirect(ageState)) : null;
-  const messagingState = role === "student" ? await getMessagingState(user.id) : null;
+  // Age/guardian and messaging status only apply to students and teachers (not admins). Both come
+  // from getAccountStatus() — the same loader the Messages page uses, built on the same setup rule
+  // the student/teacher layouts gate on (lib/account-setup.ts) — so Settings and Messages can never
+  // disagree about whether setup is finished. Settings never grants anything by itself: it only
+  // shows what's outstanding and links to the existing flow that actually resolves it.
+  const supabase = await createClient();
+  const status = role === "admin" ? null : await getAccountStatus(supabase, user.id);
+  const setupBanner = status ? accountSetupBanner(status.setup, status.setupHref) : null;
+  const messagingState = status?.messaging ?? null;
+
+  // The person's own stored details, read with THEIR session so row-level security applies
+  // (age_records_read_own, student_profile_owner, teacher_profile_read_own_or_admin).
+  const [{ data: ageRecord }, { data: studentDetails }, { data: teacherDetails }] = await Promise.all([
+    role === "admin"
+      ? Promise.resolve({ data: null })
+      : supabase.from("age_records").select("date_of_birth, guardian_email, consent_status").eq("profile_id", user.id).maybeSingle(),
+    role === "student"
+      ? supabase.from("student_profiles").select("grade, school_name").eq("profile_id", user.id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    role === "teacher"
+      ? supabase.from("teacher_profiles").select("specialty, bio").eq("profile_id", user.id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const group = ageRecord ? ageGroup(ageInYears(ageRecord.date_of_birth)) : null;
+  const ageDetails = role === "admin" || !status ? null : ageSummary(role, status.setup, ageRecord, messagingState, CONTACT_EMAIL);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 p-6">
@@ -58,11 +79,19 @@ export default async function AccountPage() {
         </Card>
       )}
 
-      <Card className="flex flex-col gap-1">
-        <SectionHeading>Profile</SectionHeading>
-        <p className="font-semibold">{profile.full_name}</p>
-        <p className="text-xs capitalize text-ink-faint">{role}</p>
-      </Card>
+      <ProfilePanel
+        role={role}
+        showPhone={phoneEditable(group)}
+        phoneOptional={role === "admin" || group !== "adult"}
+        initial={{
+          fullName: profile.full_name,
+          phone: profile.phone ?? "",
+          grade: studentDetails?.grade ?? "",
+          schoolName: studentDetails?.school_name ?? "",
+          specialty: teacherDetails?.specialty ?? "",
+          bio: teacherDetails?.bio ?? "",
+        }}
+      />
 
       <Card className="flex flex-col gap-1">
         <SectionHeading>Account</SectionHeading>
@@ -72,38 +101,60 @@ export default async function AccountPage() {
         </Link>
       </Card>
 
-      {ageState && (
+      {ageDetails && (
         <Card className="flex flex-col gap-1">
           <SectionHeading>Age &amp; Guardian</SectionHeading>
-          {ageState.kind === "ok" ? (
-            <p className="text-sm text-ink-soft">Your account is fully set up — nothing outstanding here.</p>
-          ) : (
-            <>
-              <p className="text-sm text-ink-soft">
-                {ageState.kind === "needs_age" && "You haven't finished your age check yet."}
-                {ageState.kind === "pending" && "Waiting for your parent or guardian to approve your account."}
-                {ageState.kind === "declined" && "Your parent or guardian didn't approve your account."}
-              </p>
-              <Link href={setupBanner!.href} className="mt-1 text-sm font-semibold text-brand-cyan-deep">
-                {ageState.kind === "needs_age" ? "Finish the age check" : "Check the status"}
+          <p className="text-sm text-ink-soft">{ageDetails.status}</p>
+          {ageDetails.rows.length > 0 && (
+            <dl className="mt-1 flex flex-col gap-0.5 text-sm">
+              {ageDetails.rows.map((row) => (
+                <div key={row.label} className="flex flex-wrap gap-x-1">
+                  <dt className="text-ink-faint">{row.label}:</dt>
+                  <dd className="text-ink-soft">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {ageDetails.correctionNote && <p className="mt-1 text-xs text-ink-faint">{ageDetails.correctionNote}</p>}
+          {ageDetails.links.map((link) =>
+            link.href.startsWith("mailto:") ? (
+              <a key={link.href} href={link.href} className="mt-1 text-sm font-semibold text-brand-cyan-deep">
+                {link.label}
+              </a>
+            ) : (
+              <Link key={link.href} href={link.href} className="mt-1 text-sm font-semibold text-brand-cyan-deep">
+                {link.label}
               </Link>
-            </>
+            ),
           )}
         </Card>
       )}
 
-      {role === "student" && messagingState && (
+      {role !== "admin" && messagingState && (
         <Card className="flex flex-col gap-1">
           <SectionHeading>Messaging</SectionHeading>
           <p className="text-sm text-ink-soft">
             {messagingState.kind === "allowed" &&
-              "Messaging is available — you can message your teachers from a lesson or activity."}
+              (role === "student"
+                ? "Messaging is available — you can message your teachers from a lesson or activity."
+                : "Messaging is available — reply to your students and message students enrolled in your activities.")}
             {messagingState.kind === "needs_guardian" && "Messaging needs your parent or guardian's permission first."}
             {messagingState.kind === "not_cleared" && "Messaging isn't available until your account setup above is finished."}
+            {messagingState.kind === "unavailable" && MESSAGING_UNAVAILABLE_MESSAGE}
           </p>
-          <Link href="/student/messages" className="mt-1 text-sm font-semibold text-brand-cyan-deep">
-            {messagingState.kind === "allowed" ? "Go to Messages" : "See what's needed"}
-          </Link>
+          {messagingState.kind === "not_cleared" && status?.setupHref ? (
+            <Link href={status.setupHref} className="mt-1 text-sm font-semibold text-brand-cyan-deep">
+              Finish account setup
+            </Link>
+          ) : messagingState.kind === "needs_guardian" && role === "student" ? (
+            <Link href="/student/messages" className="mt-1 text-sm font-semibold text-brand-cyan-deep">
+              Ask my parent or guardian
+            </Link>
+          ) : messagingState.kind === "allowed" ? (
+            <Link href={`/${role}/messages`} className="mt-1 text-sm font-semibold text-brand-cyan-deep">
+              Go to Messages
+            </Link>
+          ) : null}
         </Card>
       )}
 

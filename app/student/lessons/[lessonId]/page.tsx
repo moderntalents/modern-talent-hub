@@ -10,14 +10,14 @@ import { isVideoFile } from "@/lib/uploads";
 import { Card } from "@/components/ui/Card";
 import { StartConversationButton } from "@/components/messages/StartConversationButton";
 import { MessagingLockedNote } from "@/components/messages/MessagingLockedNote";
-import { getMessagingState } from "@/lib/messaging-gate";
+import { getAccountStatus } from "@/lib/messaging-gate";
 import { AssignmentSubmitForm } from "./AssignmentSubmitForm";
 
 export default async function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
   const { lessonId } = await params;
   const session = await getSessionProfile();
   const supabase = await createClient();
-  const messagingState = await getMessagingState(session!.user.id);
+  const messagingState = (await getAccountStatus(supabase, session!.user.id)).messaging;
   const canMessage = messagingState.kind === "allowed";
 
   const [{ data: lesson }, { data: materials }, { data: assignment }] = await Promise.all([

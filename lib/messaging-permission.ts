@@ -12,6 +12,7 @@
 
 import { ADULT_AGE, ageInYears } from "@/lib/age";
 import { coversMessaging } from "@/lib/consent-versions";
+import { consentComplete, type AgeState } from "@/lib/account-setup";
 
 export type GuardianMessagingStatus = "not_requested" | "granted" | "declined" | "withdrawn";
 
@@ -26,11 +27,15 @@ export interface MessagingRecord {
 export type MessagingState =
   | { kind: "allowed" }
   | { kind: "not_cleared" } // platform age check / guardian approval isn't complete
-  | { kind: "needs_guardian"; status: GuardianMessagingStatus }; // under 18, no messaging permission
+  | { kind: "needs_guardian"; status: GuardianMessagingStatus } // under 18, no messaging permission
+  // The permission couldn't be checked (for example, the database refused the query). Never produced
+  // by messagingState() below — only by the server-side loader (lib/messaging-gate.ts) — so a failed
+  // check is never mistaken for "your account setup isn't finished". Treated as NOT allowed.
+  | { kind: "unavailable" };
 
 export function messagingState(record: MessagingRecord | null, now: Date = new Date()): MessagingState {
   if (!record) return { kind: "not_cleared" };
-  if (record.consent_status !== "not_required" && record.consent_status !== "granted") return { kind: "not_cleared" };
+  if (!consentComplete(record.consent_status)) return { kind: "not_cleared" };
   if (ageInYears(record.date_of_birth, now) >= ADULT_AGE) return { kind: "allowed" };
   if (record.guardian_messaging_allowed && coversMessaging(record.guardian_messaging_version)) return { kind: "allowed" };
   return { kind: "needs_guardian", status: record.guardian_messaging_status };
@@ -38,4 +43,17 @@ export function messagingState(record: MessagingRecord | null, now: Date = new D
 
 export function messagingAllowed(record: MessagingRecord | null, now: Date = new Date()): boolean {
   return messagingState(record, now).kind === "allowed";
+}
+
+/**
+ * The messaging state a page should show, given the account-setup state from lib/account-setup.ts
+ * (the one source of truth Settings uses too). "not_cleared" ("finish setting up your account") is
+ * only ever the answer when account setup really is incomplete. If setup is complete but the
+ * messaging read still came back "not_cleared" (the two reads disagreed, e.g. the permission row
+ * couldn't be read), that is a problem on our side, not the student's: fail closed as "unavailable".
+ */
+export function messagingForAccount(setup: AgeState, messaging: MessagingState): MessagingState {
+  if (setup.kind !== "ok") return { kind: "not_cleared" };
+  if (messaging.kind === "not_cleared") return { kind: "unavailable" };
+  return messaging;
 }

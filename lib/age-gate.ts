@@ -4,44 +4,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionProfile } from "@/lib/auth";
+import { consentComplete, gateRedirect, getAgeState, type AgeState } from "@/lib/account-setup";
 
 // The age gate: nobody uses the student or teacher area until we know their age and, for
 // under-18s, a parent or guardian has approved. Enforced in two places that both call
 // this file — the page layouts (what people see) and the server actions / API routes
 // (what a person could call directly), so hiding a page is never the only protection.
 
-export type AgeState =
-  | { kind: "needs_age" } // no date of birth on record yet (new Google user, or an existing account)
-  | { kind: "pending"; guardianEmail: string }
-  | { kind: "declined" }
-  | { kind: "ok" };
-
-export async function getAgeState(supabase: SupabaseClient<Database>, userId: string): Promise<AgeState> {
-  // RLS lets a person read only their own record.
-  const { data } = await supabase
-    .from("age_records")
-    .select("consent_status, guardian_email")
-    .eq("profile_id", userId)
-    .maybeSingle();
-
-  if (!data) return { kind: "needs_age" };
-  if (data.consent_status === "pending") return { kind: "pending", guardianEmail: data.guardian_email ?? "" };
-  if (data.consent_status === "declined") return { kind: "declined" };
-  return { kind: "ok" };
-}
-
-/** Where someone who is not cleared should be sent, or null if they may continue. */
-export function gateRedirect(state: AgeState): string | null {
-  switch (state.kind) {
-    case "needs_age":
-      return "/age-check";
-    case "pending":
-    case "declined":
-      return "/consent-pending";
-    default:
-      return null;
-  }
-}
+// Whether setup is complete is decided in ONE place, lib/account-setup.ts, which Settings, the
+// Messages page and the messaging gate use too, so no two pages can disagree about it.
+export type { AgeState };
+export { gateRedirect, getAgeState };
 
 /**
  * Called by the student and teacher layouts. Administrators are exempt.
@@ -65,7 +38,7 @@ export async function isAgeCleared(userId: string, role?: string): Promise<boole
   if (role === "admin") return true;
   const admin = createAdminClient();
   const { data } = await admin.from("age_records").select("consent_status").eq("profile_id", userId).maybeSingle();
-  return data?.consent_status === "not_required" || data?.consent_status === "granted";
+  return consentComplete(data?.consent_status);
 }
 
 export const AGE_GATE_MESSAGE =

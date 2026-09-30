@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { issueMessagingConsentRequest, maskEmail } from "@/lib/consent";
-import { getMessagingState } from "@/lib/messaging-gate";
+import { getMessagingState, MESSAGING_UNAVAILABLE_MESSAGE } from "@/lib/messaging-gate";
 
 // "Ask my parent to allow messaging". The student is always taken from the login session, and the
 // email only ever goes to the parent/guardian ON RECORD — the student cannot type a new address here,
@@ -31,6 +31,7 @@ export async function requestMessagingPermission(): Promise<AskResult> {
 
     const state = await getMessagingState(user.id, admin);
     if (state.kind === "allowed") return fail("Messaging is already switched on for your account.");
+    if (state.kind === "unavailable") return fail(MESSAGING_UNAVAILABLE_MESSAGE);
     if (state.kind === "not_cleared" || record?.consent_status !== "granted" || !record.guardian_email) {
       return fail("Your parent or guardian needs to approve your account first.");
     }

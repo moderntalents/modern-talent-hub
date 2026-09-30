@@ -10,7 +10,7 @@ import { BILLING_LABELS, formatKes } from "@/lib/constants";
 import { Card, Badge } from "@/components/ui/Card";
 import { StartConversationButton } from "@/components/messages/StartConversationButton";
 import { MessagingLockedNote } from "@/components/messages/MessagingLockedNote";
-import { getMessagingState } from "@/lib/messaging-gate";
+import { getAccountStatus } from "@/lib/messaging-gate";
 import { SubscribeForm } from "./SubscribeForm";
 
 export default async function ActivityDetailPage({
@@ -21,7 +21,7 @@ export default async function ActivityDetailPage({
   const { activityId } = await params;
   const session = await getSessionProfile();
   const supabase = await createClient();
-  const messagingState = await getMessagingState(session!.user.id);
+  const messagingState = (await getAccountStatus(supabase, session!.user.id)).messaging;
   const canMessage = messagingState.kind === "allowed";
 
   const [{ data: activity }, { data: materials }, { data: subscription }] = await Promise.all([

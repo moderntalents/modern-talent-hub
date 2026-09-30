@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isUuid, type MessageKind } from "@/lib/messages/rules";
+import { isUuid, threadReadOnlyReason, type MessageKind } from "@/lib/messages/rules";
 
 // What the messaging pages read. Conversations and messages are read AS THE SIGNED-IN PERSON, so
 // row-level security applies: someone only ever gets back conversations they are one of the two
@@ -113,22 +113,19 @@ export async function getThread(conversationId: string, myId: string, role: "stu
   const otherId = role === "student" ? conversation.teacher_id : conversation.student_id;
   const names = await getDisplayNames([otherId]);
 
-  const { data: status } = await createAdminClient().rpc("messaging_can_send", {
+  // The same check the send path runs (lib/messages/service.ts), so the message box is shown exactly
+  // when sending would be accepted. A failed check used to fall through to "closed", hiding the box
+  // with the wrong explanation; it is now logged and reported as what it is.
+  const { data: status, error: statusError } = await createAdminClient().rpc("messaging_can_send", {
     p_user: myId,
     p_conversation: conversationId,
   });
+  if (statusError) console.error("[messages] messaging_can_send failed:", statusError.message);
 
   return {
     id: conversation.id,
     otherName: names.get(otherId) ?? (role === "student" ? "Teacher" : "Student"),
-    readOnlyReason:
-      status === "ok"
-        ? null
-        : status === "not_cleared"
-          ? "Messaging is paused until the age check or guardian approval is complete."
-          : status === "not_permitted"
-            ? "Messaging is paused: a parent or guardian's permission for private messages is needed."
-            : "This conversation is closed for new messages. You can still read it.",
+    readOnlyReason: threadReadOnlyReason(status, !!statusError),
     messages: (rows ?? [])
       .reverse()
       .map((m) => ({

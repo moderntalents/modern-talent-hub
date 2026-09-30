@@ -84,3 +84,25 @@ export function friendlyMessagingError(raw: string | null | undefined): string {
   const reason = /messaging:([a-z_]+)/.exec(raw ?? "")?.[1];
   return (reason && FRIENDLY[reason]) || "Something went wrong. Please try again.";
 }
+
+/**
+ * Why a conversation the person can SEE can't take a new message from them, in plain words — or null
+ * when they may write (the message box is shown). `status` is what messaging_can_send() returned;
+ * `failed` is true when that check itself errored. A failed check keeps the box hidden (fail closed)
+ * but says so, instead of wrongly calling the conversation "closed".
+ */
+export function threadReadOnlyReason(status: string | null | undefined, failed: boolean): string | null {
+  if (failed) return "We couldn't check whether you can reply right now. Please refresh the page in a moment.";
+  switch (status) {
+    case "ok":
+      return null;
+    case "not_cleared":
+      return "Messaging is paused until the age check or guardian approval is complete.";
+    case "not_permitted":
+      return "Messaging is paused: a parent or guardian's permission for private messages is needed.";
+    case "closed":
+      return "This conversation is closed for new messages. You can still read it.";
+    default:
+      return "We couldn't check whether you can reply right now. Please refresh the page in a moment.";
+  }
+}

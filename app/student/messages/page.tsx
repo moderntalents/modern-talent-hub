@@ -1,7 +1,8 @@
 import { getSessionProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { listConversations } from "@/lib/messages/queries";
-import { getMessagingState } from "@/lib/messaging-gate";
+import { getAccountStatus, MESSAGING_UNAVAILABLE_MESSAGE } from "@/lib/messaging-gate";
+import { createClient } from "@/lib/supabase/server";
 import { hasActiveConsentRequest, maskEmail } from "@/lib/consent";
 import { ConversationList } from "@/components/messages/ConversationList";
 import { AutoRefresh } from "@/components/live/AutoRefresh";
@@ -16,7 +17,9 @@ export default async function StudentMessagesPage() {
   const session = await getSessionProfile();
   const userId = session!.user.id;
   const admin = createAdminClient();
-  const state = await getMessagingState(userId, admin);
+  // Same loader as Settings, so the two pages always agree about whether setup is finished.
+  const account = await getAccountStatus(await createClient(), userId, admin);
+  const state = account.messaging;
 
   // Under 18 without the parent or guardian's messaging permission: explain, and offer to ask.
   // (The database hides their conversations anyway; this just says why.)
@@ -40,13 +43,12 @@ export default async function StudentMessagesPage() {
     );
   }
 
-  // Account-level age check / consent isn't finished yet — a different, earlier gate than
-  // guardian permission for messaging specifically (0014). In the normal flow the student
-  // layout's own age gate (lib/age-gate.ts, unchanged by this fix) already redirects someone
-  // in this state away from /student/* pages before they'd ever see this — this branch exists
-  // so that if it's ever reached anyway, messaging never silently tells them to click a
-  // "Message teacher" button that isn't there for them.
-  if (state.kind === "not_cleared") {
+  // Account setup (age check, or a guardian's approval of the account) really isn't finished — a
+  // different, earlier gate than guardian permission for messaging specifically (0014). Only shown
+  // when lib/account-setup.ts says so; the student layout normally redirects before this is reached.
+  // The button goes straight to the step that's missing.
+  if (state.kind === "not_cleared" && account.setupHref) {
+    const setup = account.setup;
     return (
       <div className="flex flex-col gap-4">
         <div>
@@ -58,14 +60,35 @@ export default async function StudentMessagesPage() {
             <div>
               <p className="font-head text-base font-bold">Finish setting up your account first</p>
               <p className="mt-1 text-sm text-ink-soft">
-                Messaging isn&apos;t available until your account&apos;s age check is complete. This is separate
-                from a parent or guardian&apos;s permission for messaging specifically.
+                {setup.kind === "needs_age"
+                  ? "Messaging isn't available until you've finished the age check."
+                  : setup.kind === "pending"
+                    ? "Messaging isn't available until your parent or guardian approves your account."
+                    : "Messaging isn't available because your parent or guardian didn't approve your account."}{" "}
+                This is separate from a parent or guardian&apos;s permission for messaging specifically.
               </p>
             </div>
-            <LinkButton href="/account" className="w-fit">
-              Finish account setup
+            <LinkButton href={account.setupHref} className="w-fit">
+              {setup.kind === "needs_age" ? "Finish the age check" : "Check the approval"}
             </LinkButton>
           </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // The permission couldn't be checked at all (lib/messaging-gate.ts logs why). Fail closed, but don't
+  // send a fully set-up student back to account setup for a problem that isn't theirs.
+  if (state.kind === "unavailable" || state.kind === "not_cleared") {
+    return (
+      <div className="flex flex-col gap-4">
+        <div>
+          <h1 className="font-head text-xl font-extrabold">Messages</h1>
+          <p className="text-sm text-ink-soft">Ask your teachers questions and hand in homework as a PDF.</p>
+        </div>
+        <Card>
+          <p className="font-head text-base font-bold">Messaging is unavailable right now</p>
+          <p className="mt-1 text-sm text-ink-soft">{MESSAGING_UNAVAILABLE_MESSAGE}</p>
         </Card>
       </div>
     );
