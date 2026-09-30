@@ -41,7 +41,7 @@ export async function listConversations(myId: string, role: "student" | "teacher
   const supabase = await createClient();
   const { data: conversations } = await supabase
     .from("conversations")
-    .select("id, student_id, teacher_id, last_message_at")
+    .select("id, student_id, teacher_id, created_at, last_message_at")
     .order("last_message_at", { ascending: false })
     .limit(100);
   if (!conversations || conversations.length === 0) return [];
@@ -59,7 +59,13 @@ export async function listConversations(myId: string, role: "student" | "teacher
   const otherId = (c: { student_id: string; teacher_id: string }) => (role === "student" ? c.teacher_id : c.student_id);
   const names = await getDisplayNames(conversations.map(otherId));
 
-  return conversations.map((c) => {
+  // A teacher doesn't see a thread until something has been written in it: a thread a student opened
+  // without writing stays out of the teacher's list (with an under-18 student the teacher couldn't
+  // write in it anyway). last_message_at only moves when a message is sent.
+  const shown =
+    role === "teacher" ? conversations.filter((c) => latest.has(c.id) || c.last_message_at !== c.created_at) : conversations;
+
+  return shown.map((c) => {
     const last = latest.get(c.id);
     return {
       id: c.id,
@@ -145,17 +151,34 @@ export interface EnrolledStudent {
   activityTitle: string;
 }
 
-/** A teacher's own active subscribers — the only students a teacher may start a conversation with. */
+/**
+ * The students a teacher may START a conversation with: adults with an active subscription to one of
+ * the teacher's activities. Who qualifies is decided by the database (messaging_teacher_startable_students,
+ * the same rule start_conversation_as_teacher() enforces), so under-18 students are simply not listed —
+ * no age is read or shown here. `teacherId` must be the signed-in teacher's own id.
+ */
 export async function listEnrolledStudents(teacherId: string): Promise<EnrolledStudent[]> {
+  const { data: startable, error } = await createAdminClient().rpc("messaging_teacher_startable_students", { p_teacher: teacherId });
+  if (error) {
+    console.error("[messages] could not list students a teacher may message:", error.message);
+    return [];
+  }
+  const allowed = new Set(startable ?? []);
+  if (allowed.size === 0) return [];
+
   const supabase = await createClient();
   const { data } = await supabase
     .from("subscriptions")
-    .select("student_id, activities(title)")
+    .select("student_id, current_period_end, activities(title)")
     .eq("teacher_id", teacherId)
     .eq("status", "active")
-    .returns<{ student_id: string; activities: { title: string } | null }[]>();
+    .returns<{ student_id: string; current_period_end: string | null; activities: { title: string } | null }[]>();
 
-  const rows = data ?? [];
+  // Show the title of a subscription that is still current (not one past its end date).
+  const now = Date.now();
+  const rows = (data ?? []).filter(
+    (r) => allowed.has(r.student_id) && (r.current_period_end === null || Date.parse(r.current_period_end) > now),
+  );
   const names = await getDisplayNames(rows.map((r) => r.student_id));
   const seen = new Set<string>();
   const students: EnrolledStudent[] = [];

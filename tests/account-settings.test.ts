@@ -215,6 +215,7 @@ describe("message box shown or not (threadReadOnlyReason)", () => {
   test("each refusal keeps it hidden with its own reason", () => {
     assert.match(threadReadOnlyReason("not_cleared", false)!, /age check/);
     assert.match(threadReadOnlyReason("closed", false)!, /closed/);
+    assert.match(threadReadOnlyReason("awaiting_student", false)!, /once the student has written/);
   });
 
   test("a failed check stays hidden (fail closed) but is NOT reported as a closed conversation", () => {

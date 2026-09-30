@@ -83,7 +83,7 @@ export default async function StudentMessagesPage() {
         basePath="/student/messages"
         conversations={conversations}
         emptyTitle="No messages yet"
-        emptyDescription="Open one of your teacher's lessons, or an activity you're enrolled in, and choose “Message teacher”."
+        emptyDescription="Open an activity you're enrolled in and choose “Message coach”."
       />
     </div>
   );

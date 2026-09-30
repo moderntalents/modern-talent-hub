@@ -7,11 +7,9 @@ import { ErrorBanner } from "@/components/ui/EmptyState";
 import {
   startConversationAsTeacher,
   startConversationFromActivity,
-  startConversationFromLesson,
 } from "@/lib/messages/actions";
 
 type Target =
-  | { kind: "lesson"; lessonId: string }
   | { kind: "activity"; activityId: string }
   | { kind: "student"; studentId: string };
 
@@ -36,11 +34,9 @@ export function StartConversationButton({
     setError(null);
     startTransition(async () => {
       const result =
-        target.kind === "lesson"
-          ? await startConversationFromLesson(target.lessonId)
-          : target.kind === "activity"
-            ? await startConversationFromActivity(target.activityId)
-            : await startConversationAsTeacher(target.studentId);
+        target.kind === "activity"
+          ? await startConversationFromActivity(target.activityId)
+          : await startConversationAsTeacher(target.studentId);
       if (result.ok) router.push(`${basePath}/${result.conversationId}`);
       else setError(result.message);
     });

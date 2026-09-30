@@ -8,9 +8,10 @@ import { createTestDb } from "./helpers/db";
 
 const NEW_TABLES = ["conversations", "messages"];
 const NEW_FUNCTIONS = [
-  "age_cleared", "caller_can_read_conversation", "messaging_relationship", "_open_conversation",
-  "start_conversation_from_lesson", "start_conversation_from_activity", "start_conversation_as_teacher",
-  "messaging_can_send", "send_message", "attachment_in_use", "messaging_conversation_ids", "delete_user_messages",
+  "age_cleared", "caller_can_read_conversation", "messaging_active_subscription", "messaging_relationship",
+  "messaging_is_minor", "_open_conversation", "start_conversation_from_activity", "start_conversation_as_teacher",
+  "messaging_teacher_startable_students", "messaging_can_send", "send_message", "attachment_in_use",
+  "messaging_conversation_ids", "delete_user_messages",
 ];
 
 async function snapshot(db: PGlite) {

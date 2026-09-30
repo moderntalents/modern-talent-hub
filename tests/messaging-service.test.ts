@@ -20,6 +20,8 @@ const uuid = () => crypto.randomUUID();
 before(async () => {
   db = await createTestDb();
   await seedWorld(db);
+  // S2 (under 18, guardian-approved account) is enrolled in the same activity as S1.
+  await db.query("insert into subscriptions (student_id, activity_id, teacher_id, status) values ($1, $2, $3, 'active')", [ID.S2, ID.A1, ID.T2]);
 });
 
 beforeEach(async () => {
@@ -29,8 +31,9 @@ beforeEach(async () => {
 
 const rows = async (sql: string, params: unknown[] = []) => (await db.query<Record<string, unknown>>(sql, params)).rows;
 
-async function conversation(student: string = ID.S1, lesson: string = ID.L1): Promise<string> {
-  const r = await service.startFromLesson(fake.admin, student, lesson);
+/** A conversation opened by the student, from activity A1 (teacher T2). S1 is an adult, S2 is under 18. */
+async function conversation(student: string = ID.S1): Promise<string> {
+  const r = await service.startFromActivity(fake.admin, student, ID.A1);
   assert.ok(r.ok, "setup: conversation should open");
   return r.conversationId;
 }
@@ -55,29 +58,36 @@ const failedWith = (r: { ok: boolean }, pattern: RegExp) => {
 };
 
 describe("starting conversations", () => {
-  test("a student opens a conversation from a lesson and from an activity; a teacher from an enrolled student", async () => {
-    const a = await service.startFromLesson(fake.admin, ID.S1, ID.L1);
+  test("a student opens a conversation from an activity they're enrolled in; a teacher with an enrolled ADULT", async () => {
     const b = await service.startFromActivity(fake.admin, ID.S1, ID.A1);
     const c = await service.startAsTeacher(fake.admin, ID.T2, ID.S1);
-    assert.ok(a.ok && b.ok && c.ok);
+    assert.ok(b.ok && c.ok);
     assert.equal(b.conversationId, c.conversationId, "the same pair shares one thread");
-    assert.notEqual(a.conversationId, b.conversationId);
+  });
+
+  test("there is no lesson-based start any more", () => {
+    assert.equal("startFromLesson" in service, false);
   });
 
   test("the database's refusals come back as plain sentences", async () => {
-    failedWith(await service.startFromLesson(fake.admin, ID.S1, ID.L2), /can't message/i); // draft
     failedWith(await service.startFromActivity(fake.admin, ID.S5, ID.A1), /can't message/i); // not paid
-    failedWith(await service.startAsTeacher(fake.admin, ID.T1, ID.S1), /can't message/i); // no subscription
-    failedWith(await service.startFromLesson(fake.admin, ID.S3, ID.L1), /age check/i); // guardian pending
-    failedWith(await service.startFromLesson(fake.admin, ID.S1, "not-a-uuid"), /isn't available/i);
-    failedWith(await service.startFromLesson(fake.admin, ID.S1, `${ID.L1}' or 1=1 --`), /isn't available/i);
+    failedWith(await service.startFromActivity(fake.admin, ID.S7, ID.A1), /can't message/i); // not enrolled
+    failedWith(await service.startAsTeacher(fake.admin, ID.T1, ID.S1), /can't message/i); // no subscription (lessons only)
+    failedWith(await service.startFromActivity(fake.admin, ID.S1, "not-a-uuid"), /isn't available/i);
+    failedWith(await service.startFromActivity(fake.admin, ID.S1, `${ID.A1}' or 1=1 --`), /isn't available/i);
+    assert.equal((await rows("select 1 from conversations")).length, 0);
+  });
+
+  test("a teacher can't start with an under-18 student, and says so plainly", async () => {
+    const r = await service.startAsTeacher(fake.admin, ID.T2, ID.S2);
+    failedWith(r, /under 18/i);
     assert.equal((await rows("select 1 from conversations")).length, 0);
   });
 
   test("starting is rate limited: 30 an hour", async () => {
-    for (let i = 0; i < service.LIMITS.start.max; i++) assert.ok((await service.startFromLesson(fake.admin, ID.S1, ID.L1)).ok);
-    failedWith(await service.startFromLesson(fake.admin, ID.S1, ID.L1), /going a bit fast/i);
-    assert.ok((await service.startFromLesson(fake.admin, ID.S2, ID.L1)).ok, "another person is not affected");
+    for (let i = 0; i < service.LIMITS.start.max; i++) assert.ok((await service.startFromActivity(fake.admin, ID.S1, ID.A1)).ok);
+    failedWith(await service.startFromActivity(fake.admin, ID.S1, ID.A1), /going a bit fast/i);
+    assert.ok((await service.startFromActivity(fake.admin, ID.S2, ID.A1)).ok, "another person is not affected");
   });
 });
 
@@ -101,11 +111,11 @@ describe("preparing an upload", () => {
     failedWith(await service.prepareAttachmentUpload(fake.admin, ID.S1, { conversationId: uuid(), fileName: "a.pdf", fileSize: 10 }), /couldn't be found/i);
     failedWith(await service.prepareAttachmentUpload(fake.admin, ID.S1, { conversationId: "nope", fileName: "a.pdf", fileSize: 10 }), /couldn't be found/i);
 
-    await db.query("update lessons set status = 'draft' where id = $1", [ID.L1]);
+    await db.query("update subscriptions set status = 'cancelled' where student_id = $1 and activity_id = $2", [ID.S1, ID.A1]);
     try {
       failedWith(await service.prepareAttachmentUpload(fake.admin, ID.S1, { conversationId: conv, fileName: "a.pdf", fileSize: 10 }), /closed/i);
     } finally {
-      await db.query("update lessons set status = 'published' where id = $1", [ID.L1]);
+      await db.query("update subscriptions set status = 'active' where student_id = $1 and activity_id = $2", [ID.S1, ID.A1]);
     }
     assert.throws(() => fake.browserUpload(`${conv}/${uuid()}.pdf`, pdfBytes()), /no upload link/);
   });
@@ -134,7 +144,7 @@ describe("sending", () => {
   test("a plain text message, both directions", async () => {
     const conv = await conversation();
     assert.ok((await service.sendMessage(fake.admin, ID.S1, { conversationId: conv, body: "  Hello  ", kind: "message" })).ok);
-    assert.ok((await service.sendMessage(fake.admin, ID.T1, { conversationId: conv, body: "Hi!", kind: "message" })).ok);
+    assert.ok((await service.sendMessage(fake.admin, ID.T2, { conversationId: conv, body: "Hi!", kind: "message" })).ok);
     const stored = await rows("select sender_id, body, attachment_path from messages order by created_at");
     assert.deepEqual(stored.map((r) => r.body), ["Hello", "Hi!"]);
     assert.ok(stored.every((r) => r.attachment_path === null));
@@ -142,7 +152,7 @@ describe("sending", () => {
 
   test("the full homework journey: teacher sends instructions + PDF, student hands in a PDF, both can download", async () => {
     const conv = await conversation();
-    const homework = await sendWithPdf(ID.T1, conv, pdfBytes(5000), { name: "Fractions worksheet.pdf", body: "Do questions 1–10", kind: "homework" });
+    const homework = await sendWithPdf(ID.T2, conv, pdfBytes(5000), { name: "Fractions worksheet.pdf", body: "Do questions 1–10", kind: "homework" });
     assert.ok(homework.sent.ok);
     const done = await sendWithPdf(ID.S1, conv, pdfBytes(7000), { name: "My answers.pdf", body: "Here is my work", kind: "submission" });
     assert.ok(done.sent.ok);
@@ -151,7 +161,7 @@ describe("sending", () => {
     assert.deepEqual(
       stored.map((r) => [r.kind, r.sender_id, r.attachment_name, r.size]),
       [
-        ["homework", ID.T1, "Fractions worksheet.pdf", 5000],
+        ["homework", ID.T2, "Fractions worksheet.pdf", 5000],
         ["submission", ID.S1, "My answers.pdf", 7000],
       ],
     );
@@ -218,8 +228,8 @@ describe("sending", () => {
   });
 
   test("the browser cannot choose the path: other folders, other conversations, traversal, or a file never uploaded", async () => {
-    const conv = await conversation(ID.S1, ID.L1);
-    const other = await conversation(ID.S2, ID.L1);
+    const conv = await conversation(ID.S1);
+    const other = await conversation(ID.S2);
     const send = (path: string, user = ID.S1, c = conv) => service.sendMessage(fake.admin, user, { conversationId: c, body: "x", kind: "message", attachment: { path, name: "a.pdf" } });
 
     // A real, valid PDF sitting in ANOTHER conversation must not be attachable here.
@@ -241,7 +251,7 @@ describe("sending", () => {
     assert.ok(first.sent.ok);
 
     // The teacher (who can see the message) tries to attach the student's file to a message of their own.
-    const reuse = await service.sendMessage(fake.admin, ID.T1, { conversationId: conv, body: "mine now", kind: "message", attachment: { path: first.ticket.path, name: "stolen.pdf" } });
+    const reuse = await service.sendMessage(fake.admin, ID.T2, { conversationId: conv, body: "mine now", kind: "message", attachment: { path: first.ticket.path, name: "stolen.pdf" } });
     failedWith(reuse, /couldn't be attached/i);
     // …and again with something that fails later in the pipeline.
     const again = await service.sendMessage(fake.admin, ID.S1, { conversationId: conv, body: "again", kind: "homework", attachment: { path: first.ticket.path, name: "mine.pdf" } });
@@ -258,7 +268,7 @@ describe("sending", () => {
     assert.ok(first.sent.ok);
     const fetched = fake.stats.downloads;
 
-    const reuse = await service.sendMessage(fake.admin, ID.T1, { conversationId: conv, body: "x", kind: "message", attachment: { path: first.ticket.path, name: "a.pdf" } });
+    const reuse = await service.sendMessage(fake.admin, ID.T2, { conversationId: conv, body: "x", kind: "message", attachment: { path: first.ticket.path, name: "a.pdf" } });
     failedWith(reuse, /couldn't be attached/i);
     assert.equal(fake.stats.downloads, fetched, "no download (up to 10 MB) should be wasted on a file that is already taken");
   });
@@ -278,7 +288,7 @@ describe("sending", () => {
         name === "attachment_in_use" && asked++ === 0 ? Promise.resolve({ data: false, error: null }) : realRpc(name, args),
     } as unknown as service.Admin;
 
-    const loser = await service.sendMessage(racing, ID.T1, { conversationId: conv, body: "loser", kind: "message", attachment: { path: first.ticket.path, name: "a.pdf" } });
+    const loser = await service.sendMessage(racing, ID.T2, { conversationId: conv, body: "loser", kind: "message", attachment: { path: first.ticket.path, name: "a.pdf" } });
     failedWith(loser, /couldn't be attached/i);
     assert.ok(asked >= 2, "the clean-up asked again before deleting anything");
     assert.ok(fake.files.has(first.ticket.path), "the winner's file must survive");
@@ -303,7 +313,7 @@ describe("sending", () => {
     failedWith(await service.sendMessage(fake.admin, ID.S7, { conversationId: conv, body: "hi", kind: "message" }), /couldn't be found/i); // outsider
     failedWith(await service.sendMessage(fake.admin, ID.ADMIN, { conversationId: conv, body: "hi", kind: "message" }), /couldn't be found/i);
     failedWith(await service.sendMessage(fake.admin, ID.S1, { conversationId: conv, body: "hi", kind: "homework" }), /couldn't be sent/i);
-    failedWith(await service.sendMessage(fake.admin, ID.T1, { conversationId: conv, body: "hi", kind: "submission" }), /couldn't be sent/i);
+    failedWith(await service.sendMessage(fake.admin, ID.T2, { conversationId: conv, body: "hi", kind: "submission" }), /couldn't be sent/i);
     failedWith(await service.sendMessage(fake.admin, ID.S1, { conversationId: conv, body: "hi", kind: "shout" as never }), /couldn't be sent/i);
     failedWith(await service.sendMessage(fake.admin, ID.S1, { conversationId: conv, body: "   ", kind: "message" }), /write a message/i);
     failedWith(await service.sendMessage(fake.admin, ID.S1, { conversationId: conv, body: "\u200b\u3000", kind: "message" }), /write a message/i);
@@ -313,15 +323,27 @@ describe("sending", () => {
   });
 
   test("a closed conversation refuses new messages; a child whose consent was withdrawn is refused too", async () => {
-    const conv = await conversation(ID.S2, ID.L1);
+    const conv = await conversation(ID.S2);
     assert.ok((await service.sendMessage(fake.admin, ID.S2, { conversationId: conv, body: "hi", kind: "message" })).ok);
     await db.query("update age_records set consent_status = 'declined' where profile_id = $1", [ID.S2]);
     try {
       failedWith(await service.sendMessage(fake.admin, ID.S2, { conversationId: conv, body: "hi", kind: "message" }), /age check/i);
-      failedWith(await service.sendMessage(fake.admin, ID.T1, { conversationId: conv, body: "hi", kind: "message" }), /age check/i);
+      failedWith(await service.sendMessage(fake.admin, ID.T2, { conversationId: conv, body: "hi", kind: "message" }), /age check/i);
     } finally {
       await db.query("update age_records set consent_status = 'granted' where profile_id = $1", [ID.S2]);
     }
+  });
+
+  test("with an under-18 student the teacher waits for the student's first message — text or file", async () => {
+    const conv = await conversation(ID.S2);
+    failedWith(await service.sendMessage(fake.admin, ID.T2, { conversationId: conv, body: "hi", kind: "message" }), /once the student has written/i);
+    failedWith(await service.prepareAttachmentUpload(fake.admin, ID.T2, { conversationId: conv, fileName: "a.pdf", fileSize: 10 }), /once the student has written/i);
+    assert.equal((await rows("select 1 from messages")).length, 0);
+
+    assert.ok((await service.sendMessage(fake.admin, ID.S2, { conversationId: conv, body: "Hello coach", kind: "message" })).ok);
+    assert.ok((await service.sendMessage(fake.admin, ID.T2, { conversationId: conv, body: "Hello!", kind: "message" })).ok);
+    const homework = await sendWithPdf(ID.T2, conv, pdfBytes(), { body: "Drill sheet", kind: "homework" });
+    assert.ok(homework.sent.ok);
   });
 
   test("sending is rate limited: 30 messages per 10 minutes", async () => {
@@ -330,7 +352,7 @@ describe("sending", () => {
       assert.ok((await service.sendMessage(fake.admin, ID.S1, { conversationId: conv, body: `m${i}`, kind: "message" })).ok);
     }
     failedWith(await service.sendMessage(fake.admin, ID.S1, { conversationId: conv, body: "one too many", kind: "message" }), /going a bit fast/i);
-    assert.ok((await service.sendMessage(fake.admin, ID.T1, { conversationId: conv, body: "the teacher is unaffected", kind: "message" })).ok);
+    assert.ok((await service.sendMessage(fake.admin, ID.T2, { conversationId: conv, body: "the teacher is unaffected", kind: "message" })).ok);
   });
 
   test("if the rate limiter itself is unavailable, sending is refused rather than unlimited", async () => {
@@ -357,7 +379,7 @@ describe("downloading", () => {
     const { ticket, sent } = await sendWithPdf(ID.S1, conv, pdfBytes(), { name: "My answers.pdf" });
     assert.ok(sent.ok);
 
-    for (const person of [ID.S1, ID.T1]) {
+    for (const person of [ID.S1, ID.T2]) {
       const url = await service.attachmentDownloadUrl(fake.admin, lookupAs({ id: person }), sent.messageId);
       assert.ok(url?.includes(ticket.path));
     }
@@ -371,7 +393,7 @@ describe("downloading", () => {
     assert.ok(sent.ok);
     const before = fake.downloads.length;
 
-    for (const who of [{ id: ID.S7 }, { id: ID.S2 }, { id: ID.T4 }, { id: ID.T2 }, { id: ID.ADMIN }, "anon"] as Actor[]) {
+    for (const who of [{ id: ID.S7 }, { id: ID.S2 }, { id: ID.T4 }, { id: ID.T1 }, { id: ID.ADMIN }, "anon"] as Actor[]) {
       assert.equal(await service.attachmentDownloadUrl(fake.admin, lookupAs(who), sent.messageId), null, JSON.stringify(who));
     }
     assert.equal(fake.downloads.length, before, "no link was even requested from storage");
@@ -389,13 +411,13 @@ describe("downloading", () => {
   });
 
   test("access ends when the conversation becomes unreadable (guardian consent withdrawn)", async () => {
-    const conv = await conversation(ID.S2, ID.L1);
+    const conv = await conversation(ID.S2);
     const { sent } = await sendWithPdf(ID.S2, conv, pdfBytes());
     assert.ok(sent.ok);
-    assert.ok(await service.attachmentDownloadUrl(fake.admin, lookupAs({ id: ID.T1 }), sent.messageId));
+    assert.ok(await service.attachmentDownloadUrl(fake.admin, lookupAs({ id: ID.T2 }), sent.messageId));
     await db.query("update age_records set consent_status = 'declined' where profile_id = $1", [ID.S2]);
     try {
-      assert.equal(await service.attachmentDownloadUrl(fake.admin, lookupAs({ id: ID.T1 }), sent.messageId), null);
+      assert.equal(await service.attachmentDownloadUrl(fake.admin, lookupAs({ id: ID.T2 }), sent.messageId), null);
       assert.equal(await service.attachmentDownloadUrl(fake.admin, lookupAs({ id: ID.S2 }), sent.messageId), null);
     } finally {
       await db.query("update age_records set consent_status = 'granted' where profile_id = $1", [ID.S2]);
@@ -405,10 +427,10 @@ describe("downloading", () => {
 
 describe("account deletion cleanup", () => {
   test("removes every message, every file (even uploaded-but-never-sent), and the other person's copy — and nothing else", async () => {
-    const mine = await conversation(ID.S1, ID.L1);
-    const others = await conversation(ID.S2, ID.L1);
+    const mine = await conversation(ID.S1);
+    const others = await conversation(ID.S2);
     const a = await sendWithPdf(ID.S1, mine, pdfBytes(), { body: "one" });
-    const b = await sendWithPdf(ID.T1, mine, pdfBytes(), { body: "two", kind: "homework" });
+    const b = await sendWithPdf(ID.T2, mine, pdfBytes(), { body: "two", kind: "homework" });
     const bystander = await sendWithPdf(ID.S2, others, pdfBytes(), { body: "not deleted" });
     assert.ok(a.sent.ok && b.sent.ok && bystander.sent.ok);
     const orphan = await service.prepareAttachmentUpload(fake.admin, ID.S1, { conversationId: mine, fileName: "x.pdf", fileSize: 10 });
@@ -426,12 +448,12 @@ describe("account deletion cleanup", () => {
   });
 
   test("works for a teacher too (their side of every conversation, with files)", async () => {
-    const c1 = await conversation(ID.S1, ID.L1);
-    const c2 = await conversation(ID.S2, ID.L1);
+    const c1 = await conversation(ID.S1);
+    const c2 = await conversation(ID.S2);
     const f1 = await sendWithPdf(ID.S1, c1, pdfBytes());
     const f2 = await sendWithPdf(ID.S2, c2, pdfBytes());
     assert.ok(f1.sent.ok && f2.sent.ok);
-    await service.removeUserMessaging(fake.admin, ID.T1);
+    await service.removeUserMessaging(fake.admin, ID.T2);
     assert.equal((await rows("select 1 from conversations")).length, 0);
     assert.equal(fake.files.size, 0);
   });
@@ -487,14 +509,14 @@ describe("account deletion cleanup", () => {
   });
 
   test("scrub path leaves the profile behind, so the rows would NOT cascade — the explicit removal is what protects privacy", async () => {
-    const conv = await conversation(ID.S5, ID.L1);
-    const s = await service.sendMessage(fake.admin, ID.S5, { conversationId: conv, body: "hi", kind: "message" });
+    const conv = await conversation(ID.S1);
+    const s = await service.sendMessage(fake.admin, ID.S1, { conversationId: conv, body: "hi", kind: "message" });
     assert.ok(s.ok);
     // What the scrub path does: the profile row STAYS (payment records point at it).
-    assert.equal((await rows("select 1 from conversations where student_id = $1", [ID.S5])).length, 1);
-    await service.removeUserMessaging(fake.admin, ID.S5);
-    assert.equal((await rows("select 1 from profiles where id = $1", [ID.S5])).length, 1, "profile row still exists");
-    assert.equal((await rows("select 1 from conversations where student_id = $1", [ID.S5])).length, 0);
+    assert.equal((await rows("select 1 from conversations where student_id = $1", [ID.S1])).length, 1);
+    await service.removeUserMessaging(fake.admin, ID.S1);
+    assert.equal((await rows("select 1 from profiles where id = $1", [ID.S1])).length, 1, "profile row still exists");
+    assert.equal((await rows("select 1 from conversations where student_id = $1", [ID.S1])).length, 0);
     assert.equal((await rows("select 1 from messages")).length, 0);
   });
 });

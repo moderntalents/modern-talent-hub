@@ -136,8 +136,8 @@ export default async function AccountPage() {
           <p className="text-sm text-ink-soft">
             {messagingState.kind === "allowed" &&
               (role === "student"
-                ? "Messaging is available — you can message your teachers from a lesson or activity."
-                : "Messaging is available — reply to your students and message students enrolled in your activities.")}
+                ? "Messaging is available — you can message the coach of any activity you're enrolled in."
+                : "Messaging is available — reply to your students, and start conversations with adult students enrolled in your activities.")}
             {messagingState.kind === "not_cleared" && "Messaging isn't available until your account setup above is finished."}
             {messagingState.kind === "unavailable" && MESSAGING_UNAVAILABLE_MESSAGE}
           </p>

@@ -72,6 +72,8 @@ const FRIENDLY: Record<string, string> = {
   not_cleared: "Messaging isn't available yet — the age check or guardian approval for one of you isn't complete.",
   not_found: "That conversation couldn't be found.",
   closed: "This conversation is closed for new messages. You can still read it.",
+  minor_student: "You can't start a conversation with a student who is under 18. They can message you, and you can reply once they have written.",
+  awaiting_student: "You can reply once the student has written to you.",
   empty: "Write a message or attach a PDF.",
   too_long: `Messages can be at most ${MAX_BODY_CHARS} characters.`,
   bad_request: "That message couldn't be sent.",
@@ -98,6 +100,8 @@ export function threadReadOnlyReason(status: string | null | undefined, failed: 
       return "Messaging is paused until the age check or guardian approval is complete.";
     case "closed":
       return "This conversation is closed for new messages. You can still read it.";
+    case "awaiting_student":
+      return "You can reply once the student has written to you.";
     default:
       return "We couldn't check whether you can reply right now. Please refresh the page in a moment.";
   }

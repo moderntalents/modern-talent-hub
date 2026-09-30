@@ -166,12 +166,21 @@ instructions from a teacher, completed homework from a student). Migration **`00
 code in `lib/messages/`, `components/messages/`, `app/{student,teacher}/messages/` and
 `app/api/messages/attachment/[messageId]/route.ts`. Run the migration **before** deploying the code.
 
-- **Who can talk to whom.** A student can start a conversation with the teacher of a *published lesson*
-  ("Message teacher" on the lesson page) or of an *activity they have an active subscription to*. A teacher
-  can start one only with a student who has an active subscription to one of their activities; otherwise a
-  teacher replies to students who wrote first. There is no student-to-student messaging and no other
-  route. Both people must be age-cleared (Stage 2) and the teacher approved. If the relationship ends
-  (lesson unpublished, subscription cancelled, approval withdrawn) the thread becomes **read-only**.
+- **Who can talk to whom.** The only student–teacher relationship is an **active activity subscription**,
+  and the database checks that it belongs to exactly that student, that activity and that activity's
+  teacher. "Active" means status `active` and not past `current_period_end`; subscriptions with no end
+  date (free, one-time and per-lesson billing) stay active until cancelled. A published lesson on its own
+  is **not** a relationship. A student can start a conversation from an activity they're enrolled in
+  ("Message coach"). A teacher can start one only with an enrolled student who is **18 or over** (worked
+  out from the date of birth, on today's Kenyan date, at the moment of the attempt); the teacher's
+  "start a conversation" list leaves under-18s out and never shows an age. With an **under-18** student
+  the teacher never starts: the student may open a conversation, and the teacher can write only after the
+  student has sent the first message. Both people must have an approved account (0010: adults, or
+  under-18s whose parent or guardian approved the account; there is no separate messaging consent) and
+  the teacher must be approved. There is no student-to-student or teacher-to-teacher messaging. If the
+  subscription ends or the teacher loses approval, nothing is deleted: no new conversation can start and
+  existing ones become **read-only**. (There is no subscription lifecycle yet: nothing moves a
+  subscription to `expired` or `cancelled` except account deletion — a separate future improvement.)
 - **Homework.** A teacher can tick "Send as homework" (a *Homework* badge); a student attaching a PDF is
   offered "This is my completed homework" (a *Completed homework* badge). Each student–teacher pair has one
   thread, so the conversation and its files always stay with the right two people. The existing
@@ -181,8 +190,8 @@ code in `lib/messages/`, `components/messages/`, `app/{student,teacher}/messages
   policies and table privileges are revoked, so nothing can be written from a browser. **Admins have no
   in-app access** to messages or files.
 - **Writing goes through the server.** Server actions (`lib/messages/actions.ts`) identify the caller from
-  the login, then call SQL functions with the service role (`start_conversation_from_lesson`,
-  `start_conversation_from_activity`, `start_conversation_as_teacher`, `send_message`). The functions
+  the login, then call SQL functions with the service role (`start_conversation_from_activity`,
+  `start_conversation_as_teacher`, `send_message`). The functions
   re-check every rule in the database, so an application bug cannot open a conversation the rules forbid.
   Sending is rate limited (30 messages / 10 min, 20 upload links / hour, 30 conversation starts / hour).
 - **PDFs.** Private bucket `message-attachments`: 10 MB, `application/pdf` only (enforced by Storage), and

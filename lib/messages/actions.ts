@@ -39,20 +39,6 @@ function refresh() {
 
 const UNEXPECTED = "Something went wrong. Please try again.";
 
-/** Student, from a published lesson's page. */
-export async function startConversationFromLesson(lessonId: string): Promise<service.Result<{ conversationId: string }>> {
-  try {
-    const caller = await loadCaller(["student"]);
-    if (!caller.ok) return caller;
-    const result = await service.startFromLesson(caller.admin, caller.userId, lessonId);
-    if (result.ok) refresh();
-    return result;
-  } catch (err) {
-    console.error("[messages] start from lesson failed:", err);
-    return fail(UNEXPECTED);
-  }
-}
-
 /** Student, from an activity they are actively subscribed to. */
 export async function startConversationFromActivity(activityId: string): Promise<service.Result<{ conversationId: string }>> {
   try {

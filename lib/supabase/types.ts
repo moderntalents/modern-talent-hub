@@ -890,10 +890,6 @@ export interface Database {
         Args: { p_profile: string };
         Returns: boolean;
       };
-      start_conversation_from_lesson: {
-        Args: { p_student: string; p_lesson: string };
-        Returns: string;
-      };
       start_conversation_from_activity: {
         Args: { p_student: string; p_activity: string };
         Returns: string;
@@ -902,9 +898,15 @@ export interface Database {
         Args: { p_teacher: string; p_student: string };
         Returns: string;
       };
+      // Adult, approved students with an active subscription to this approved teacher's activities: the
+      // only students the teacher may start a conversation with. Ids only, never ages.
+      messaging_teacher_startable_students: {
+        Args: { p_teacher: string };
+        Returns: string[];
+      };
       messaging_can_send: {
         Args: { p_user: string; p_conversation: string };
-        Returns: "ok" | "not_found" | "not_cleared" | "closed";
+        Returns: "ok" | "not_found" | "not_cleared" | "closed" | "awaiting_student";
       };
       send_message: {
         Args: {
