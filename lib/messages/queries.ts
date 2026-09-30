@@ -5,8 +5,7 @@ import { isUuid, threadReadOnlyReason, type MessageKind } from "@/lib/messages/r
 
 // What the messaging pages read. Conversations and messages are read AS THE SIGNED-IN PERSON, so
 // row-level security applies: someone only ever gets back conversations they are one of the two
-// people in (and only while both may use messaging — see messaging_cleared() in 0014). Nothing here
-// can widen that.
+// people in (and only while both are age-cleared). Nothing here can widen that.
 
 /**
  * Display names for people the caller already has a conversation with. Teachers cannot read student

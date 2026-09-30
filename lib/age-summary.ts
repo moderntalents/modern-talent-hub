@@ -8,8 +8,7 @@
 // This summary makes the stored details visible and gives that correction route, instead of hiding
 // everything behind "nothing outstanding".
 
-import { ADULT_AGE, ageInYears } from "@/lib/age";
-import type { MessagingState } from "@/lib/messaging-permission";
+import { ageInYears } from "@/lib/age";
 import type { AgeState } from "@/lib/account-setup";
 
 export interface StoredAgeRecord {
@@ -61,29 +60,10 @@ const CONSENT_LABEL: Record<StoredAgeRecord["consent_status"], string> = {
   declined: "Not approved",
 };
 
-function messagingLabel(state: MessagingState): string {
-  switch (state.kind) {
-    case "allowed":
-      return "Allowed";
-    case "not_cleared":
-      return "Available once your account is approved";
-    case "unavailable":
-      return "Couldn't be checked right now";
-    case "needs_guardian":
-      return state.status === "declined"
-        ? "Not allowed by your parent or guardian"
-        : state.status === "withdrawn"
-          ? "Switched off by your parent or guardian"
-          : "Needs your parent or guardian's permission";
-  }
-}
-
 export function ageSummary(
-  role: "student" | "teacher",
   /** Account setup, from lib/account-setup.ts: the same source of truth the gates and Messages use. */
   setup: AgeState,
   record: StoredAgeRecord | null,
-  messaging: MessagingState | null,
   supportEmail: string,
   now: Date = new Date(),
 ): AgeSummary {
@@ -102,15 +82,12 @@ export function ageSummary(
   }
 
   const age = ageInYears(record.date_of_birth, now);
-  const minor = age < ADULT_AGE;
   const rows: AgeSummaryRow[] = [
     { label: "Date of birth", value: formatBirthDate(record.date_of_birth) },
     { label: "Age", value: `${age}` },
   ];
   if (record.guardian_email) rows.push({ label: "Parent or guardian", value: mask(record.guardian_email) });
   rows.push({ label: "Guardian approval", value: CONSENT_LABEL[record.consent_status] });
-  // Messaging needs its own guardian permission only while a student is under 18 (0014).
-  if (role === "student" && minor && messaging) rows.push({ label: "Messaging", value: messagingLabel(messaging) });
 
   const links: AgeSummaryLink[] = [];
   let status: string;
@@ -122,9 +99,6 @@ export function ageSummary(
     links.push({ href: "/consent-pending", label: "See what you can do next" });
   } else {
     status = "Your account is set up.";
-    if (role === "student" && minor && messaging?.kind === "needs_guardian") {
-      links.push({ href: "/student/messages", label: "Ask your parent or guardian to allow messaging" });
-    }
   }
   links.push(correction);
 

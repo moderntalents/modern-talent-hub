@@ -131,10 +131,8 @@ describe("profile editing against the real database rules", () => {
 });
 
 describe("Age & Guardian summary (lib/age-summary.ts)", () => {
-  const allowed = { kind: "allowed" } as const;
-
   test("a fully set-up adult still sees their stored details and a way to correct them", () => {
-    const s = ageSummary("student", OK, { date_of_birth: "1990-03-12", guardian_email: null, consent_status: "not_required" }, allowed, SUPPORT, NOW);
+    const s = ageSummary(OK, { date_of_birth: "1990-03-12", guardian_email: null, consent_status: "not_required" }, SUPPORT, NOW);
     assert.equal(s.status, "Your account is set up.");
     assert.deepEqual(s.rows.map((r) => r.label), ["Date of birth", "Age", "Guardian approval"]);
     assert.equal(s.rows[0].value, "12 March 1990");
@@ -144,36 +142,35 @@ describe("Age & Guardian summary (lib/age-summary.ts)", () => {
     assert.ok(!s.links.some((l) => l.href === "/age-check"), "no self-service age re-entry");
   });
 
-  test("an approved under-18 sees a masked guardian email, and the messaging-permission route when needed", () => {
-    const s = ageSummary(
-      "student",
-      OK,
-      { date_of_birth: "2012-01-01", guardian_email: "parent@example.com", consent_status: "granted" },
-      { kind: "needs_guardian", status: "not_requested" },
-      SUPPORT,
-      NOW,
-    );
+  test("an approved under-18 sees a masked guardian email, and nothing about a separate messaging permission", () => {
+    const s = ageSummary(OK, { date_of_birth: "2012-01-01", guardian_email: "parent@example.com", consent_status: "granted" }, SUPPORT, NOW);
+    assert.equal(s.status, "Your account is set up.");
     assert.deepEqual(s.rows.find((r) => r.label === "Parent or guardian"), { label: "Parent or guardian", value: "p•••@example.com" });
-    assert.equal(s.rows.find((r) => r.label === "Messaging")?.value, "Needs your parent or guardian's permission");
-    assert.equal(s.links[0].href, "/student/messages");
+    assert.ok(!s.rows.some((r) => r.label === "Messaging"));
+    assert.ok(!s.links.some((l) => l.href === "/student/messages"));
     assert.ok(!JSON.stringify(s).includes("parent@example.com"), "the full guardian address is never shown");
   });
 
   test("pending and declined go to the existing consent screen", () => {
-    const pending = ageSummary("student", { kind: "pending", guardianEmail: "g@x.test" }, { date_of_birth: "2012-01-01", guardian_email: "g@x.test", consent_status: "pending" }, { kind: "not_cleared" }, SUPPORT, NOW);
+    const pending = ageSummary(
+      { kind: "pending", guardianEmail: "g@x.test" },
+      { date_of_birth: "2012-01-01", guardian_email: "g@x.test", consent_status: "pending" },
+      SUPPORT,
+      NOW,
+    );
     assert.equal(pending.links[0].href, "/consent-pending");
-    const declined = ageSummary("student", { kind: "declined" }, { date_of_birth: "2012-01-01", guardian_email: "g@x.test", consent_status: "declined" }, { kind: "not_cleared" }, SUPPORT, NOW);
+    const declined = ageSummary(
+      { kind: "declined" },
+      { date_of_birth: "2012-01-01", guardian_email: "g@x.test", consent_status: "declined" },
+      SUPPORT,
+      NOW,
+    );
     assert.equal(declined.links[0].href, "/consent-pending");
   });
 
   test("no record yet: only the existing age check is offered", () => {
-    const s = ageSummary("student", { kind: "needs_age" }, null, { kind: "not_cleared" }, SUPPORT, NOW);
+    const s = ageSummary({ kind: "needs_age" }, null, SUPPORT, NOW);
     assert.deepEqual(s.links, [{ href: "/age-check", label: "Finish the age check" }]);
-  });
-
-  test("teachers never get a messaging-permission row", () => {
-    const s = ageSummary("teacher", OK, { date_of_birth: "1985-01-01", guardian_email: null, consent_status: "not_required" }, allowed, SUPPORT, NOW);
-    assert.ok(!s.rows.some((r) => r.label === "Messaging"));
   });
 
   test("dates are formatted without time-zone drift", () => {
@@ -182,48 +179,31 @@ describe("Age & Guardian summary (lib/age-summary.ts)", () => {
   });
 });
 
-// PGlite hands back `date` columns as JS Dates; Supabase's REST API returns "YYYY-MM-DD" strings.
-// This wraps the stand-in so getMessagingState sees what production sees.
-function withStringDates(admin: ReturnType<typeof fakeAdmin>): ReturnType<typeof fakeAdmin> {
-  const iso = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : v);
-  return {
-    from: (table: string) => ({
-      select: (cols: string) => ({
-        eq: (col: string, val: unknown) => ({
-          maybeSingle: async () => {
-            const r = (await admin.from(table as "age_records").select(cols).eq(col, val as string).maybeSingle()) as {
-              data: Record<string, unknown> | null;
-              error: unknown;
-            };
-            return { ...r, data: r.data && Object.fromEntries(Object.entries(r.data).map(([k, v]) => [k, iso(v)])) };
-          },
-        }),
-      }),
-    }),
-  } as unknown as ReturnType<typeof fakeAdmin>;
-}
+// The production database as verified on 2026-09-30: 0001-0010, 0012 and 0013 applied; 0011
+// (messaging) not applied.
+const productionLikeDb = () => createTestDb({ include: (f) => f < "0015" && !f.startsWith("0011") });
 
-describe("messaging state shown on Settings/Messages", () => {
-  test("ROOT CAUSE: with the 0014 columns missing, a fully set-up student is 'unavailable', not 'finish account setup'", async () => {
-    const pre0014 = await createTestDb({ upTo: "0013" });
-    await pre0014.exec(`
+describe("messaging state shown on Settings/Messages (0011: approved accounts may message)", () => {
+  test("with messaging installed: every approved account is allowed, with no separate guardian permission", async () => {
+    const db = await createTestDb();
+    await seedWorld(db);
+    const admin = fakeAdmin(db);
+    assert.deepEqual(await getMessagingState(ID.S1, admin), { kind: "allowed" }); // adult
+    assert.deepEqual(await getMessagingState(ID.S2, admin), { kind: "allowed" }); // under 18, account approved
+    assert.deepEqual(await getMessagingState(ID.T1, admin), { kind: "allowed" }); // teacher
+    assert.deepEqual(await getMessagingState(ID.S3, admin), { kind: "not_cleared" }); // guardian approval pending
+    assert.deepEqual(await getMessagingState(ID.S4, admin), { kind: "not_cleared" }); // no age record
+  });
+
+  test("ROOT CAUSE: without the messaging migration, a set-up student is 'unavailable', not 'finish account setup'", async () => {
+    const db = await productionLikeDb();
+    await db.exec(`
       insert into auth.users (id, email, raw_user_meta_data) values ('${ID.S1}', 's1@test.invalid', '{"role":"student","full_name":"S"}');
       insert into age_records (profile_id, date_of_birth, consent_status) values ('${ID.S1}', '1990-01-01', 'not_required');
     `);
-    const state = await getMessagingState(ID.S1, fakeAdmin(pre0014));
+    const state = await getMessagingState(ID.S1, fakeAdmin(db));
     assert.deepEqual(state, { kind: "unavailable" });
     assert.notEqual(messagingLockedLabel(state), "Finish account setup");
-  });
-
-  test("with 0014 in place the real states are unchanged", async () => {
-    const db = await createTestDb();
-    await seedWorld(db);
-    const admin = withStringDates(fakeAdmin(db));
-    assert.deepEqual(await getMessagingState(ID.S1, admin), { kind: "allowed" }); // adult
-    assert.deepEqual(await getMessagingState(ID.S2, admin), { kind: "allowed" }); // guardian allowed messaging (v2)
-    assert.equal((await getMessagingState(ID.S8, admin)).kind, "needs_guardian"); // approved account, no messaging OK
-    assert.deepEqual(await getMessagingState(ID.S3, admin), { kind: "not_cleared" }); // guardian approval pending
-    assert.deepEqual(await getMessagingState(ID.S4, admin), { kind: "not_cleared" }); // no age record
   });
 });
 
@@ -234,7 +214,6 @@ describe("message box shown or not (threadReadOnlyReason)", () => {
 
   test("each refusal keeps it hidden with its own reason", () => {
     assert.match(threadReadOnlyReason("not_cleared", false)!, /age check/);
-    assert.match(threadReadOnlyReason("not_permitted", false)!, /guardian's permission/);
     assert.match(threadReadOnlyReason("closed", false)!, /closed/);
   });
 
@@ -265,10 +244,7 @@ describe("one source of truth for account setup (lib/account-setup.ts)", () => {
     const ok = { kind: "ok" } as const;
     assert.deepEqual(messagingForAccount(ok, { kind: "not_cleared" }), { kind: "unavailable" });
     assert.deepEqual(messagingForAccount(ok, { kind: "allowed" }), { kind: "allowed" });
-    assert.deepEqual(messagingForAccount(ok, { kind: "needs_guardian", status: "not_requested" }), {
-      kind: "needs_guardian",
-      status: "not_requested",
-    });
+    assert.deepEqual(messagingForAccount(ok, { kind: "unavailable" }), { kind: "unavailable" });
     for (const setup of [{ kind: "needs_age" }, { kind: "pending", guardianEmail: "g" }, { kind: "declined" }] as const) {
       assert.deepEqual(messagingForAccount(setup, { kind: "allowed" }), { kind: "not_cleared" });
     }
@@ -277,47 +253,32 @@ describe("one source of truth for account setup (lib/account-setup.ts)", () => {
   test("Settings and Messages get the same answer from getAccountStatus for every seeded student", async () => {
     const db = await createTestDb();
     await seedWorld(db);
-    const admin = withStringDates(fakeAdmin(db));
+    const admin = fakeAdmin(db);
     const session = fakeAdmin(db) as unknown as Parameters<typeof getAccountStatus>[0];
 
     const s1 = await getAccountStatus(session, ID.S1, admin); // adult
     assert.deepEqual([s1.setup.kind, s1.setupHref, s1.messaging.kind], ["ok", null, "allowed"]);
-    const s8 = await getAccountStatus(session, ID.S8, admin); // approved account, messaging not yet allowed
-    assert.deepEqual([s8.setup.kind, s8.setupHref, s8.messaging.kind], ["ok", null, "needs_guardian"]);
+    const s2 = await getAccountStatus(session, ID.S2, admin); // under 18, account approved
+    assert.deepEqual([s2.setup.kind, s2.setupHref, s2.messaging.kind], ["ok", null, "allowed"]);
     const s3 = await getAccountStatus(session, ID.S3, admin); // guardian approval pending
     assert.deepEqual([s3.setup.kind, s3.setupHref, s3.messaging.kind], ["pending", "/consent-pending", "not_cleared"]);
     const s4 = await getAccountStatus(session, ID.S4, admin); // no age record
     assert.deepEqual([s4.setup.kind, s4.setupHref, s4.messaging.kind], ["needs_age", "/age-check", "not_cleared"]);
   });
 
-  test("REPORTED BUG: set-up student whose messaging record can't be read is never told to finish setup", async () => {
-    const pre0014 = await createTestDb({ upTo: "0013" });
-    await pre0014.exec(`
-      insert into auth.users (id, email, raw_user_meta_data) values ('${ID.S1}', 's1@test.invalid', '{"role":"student","full_name":"S"}');
-      insert into age_records (profile_id, date_of_birth, consent_status) values ('${ID.S1}', '1990-01-01', 'not_required');
-    `);
-    const session = fakeAdmin(pre0014) as unknown as Parameters<typeof getAccountStatus>[0];
-    const status = await getAccountStatus(session, ID.S1, fakeAdmin(pre0014));
-    assert.equal(status.setup.kind, "ok");
-    assert.equal(status.setupHref, null, "Settings shows no outstanding setup");
-    assert.equal(status.messaging.kind, "unavailable", "Messages does not say 'finish setting up your account'");
-
-    // Production as verified on 2026-09-30: neither 0011 nor 0014 applied (read-only catalog check, 0 of 26).
-    const prod = await createTestDb({ upTo: "0014", include: (f) => !f.startsWith("0011") && !f.startsWith("0014") });
+  test("REPORTED BUG, production state: a set-up student is never told to finish setup", async () => {
+    const prod = await productionLikeDb();
     await prod.exec(`
       insert into auth.users (id, email, raw_user_meta_data) values ('${ID.S2}', 's2@test.invalid', '{"role":"student","full_name":"S"}');
       insert into age_records (profile_id, date_of_birth, guardian_email, consent_status) values ('${ID.S2}', '2012-01-01', 'g@test.invalid', 'granted');
     `);
-    const prodSession = fakeAdmin(prod) as unknown as Parameters<typeof getAccountStatus>[0];
-    const prodStatus = await getAccountStatus(prodSession, ID.S2, fakeAdmin(prod));
-    assert.deepEqual([prodStatus.setup.kind, prodStatus.setupHref, prodStatus.messaging.kind], ["ok", null, "unavailable"]);
-    assert.equal(messagingLockedLabel(prodStatus.messaging), "Messaging unavailable");
+    const session = fakeAdmin(prod) as unknown as Parameters<typeof getAccountStatus>[0];
+    const status = await getAccountStatus(session, ID.S2, fakeAdmin(prod));
+    assert.deepEqual([status.setup.kind, status.setupHref, status.messaging.kind], ["ok", null, "unavailable"]);
+    assert.equal(messagingLockedLabel(status.messaging), "Messaging unavailable");
 
-    // The two reads disagree outright (setup read finds the row, messaging read finds nothing).
-    const emptyAdmin = {
-      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
-    } as unknown as ReturnType<typeof fakeAdmin>;
-    const disagree = await getAccountStatus(session, ID.S1, emptyAdmin);
-    assert.equal(disagree.messaging.kind, "unavailable");
+    // The two checks disagree outright (setup is complete, the messaging check says not cleared).
+    const disagreeing = { rpc: async () => ({ data: false, error: null }) } as unknown as ReturnType<typeof fakeAdmin>;
+    assert.equal((await getAccountStatus(session, ID.S2, disagreeing)).messaging.kind, "unavailable");
   });
 });

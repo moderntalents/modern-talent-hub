@@ -56,7 +56,7 @@ export default async function AccountPage() {
       : Promise.resolve({ data: null }),
   ]);
   const group = ageRecord ? ageGroup(ageInYears(ageRecord.date_of_birth)) : null;
-  const ageDetails = role === "admin" || !status ? null : ageSummary(role, status.setup, ageRecord, messagingState, CONTACT_EMAIL);
+  const ageDetails = role === "admin" || !status ? null : ageSummary(status.setup, ageRecord, CONTACT_EMAIL);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 p-6">
@@ -138,17 +138,12 @@ export default async function AccountPage() {
               (role === "student"
                 ? "Messaging is available — you can message your teachers from a lesson or activity."
                 : "Messaging is available — reply to your students and message students enrolled in your activities.")}
-            {messagingState.kind === "needs_guardian" && "Messaging needs your parent or guardian's permission first."}
             {messagingState.kind === "not_cleared" && "Messaging isn't available until your account setup above is finished."}
             {messagingState.kind === "unavailable" && MESSAGING_UNAVAILABLE_MESSAGE}
           </p>
           {messagingState.kind === "not_cleared" && status?.setupHref ? (
             <Link href={status.setupHref} className="mt-1 text-sm font-semibold text-brand-cyan-deep">
               Finish account setup
-            </Link>
-          ) : messagingState.kind === "needs_guardian" && role === "student" ? (
-            <Link href="/student/messages" className="mt-1 text-sm font-semibold text-brand-cyan-deep">
-              Ask my parent or guardian
             </Link>
           ) : messagingState.kind === "allowed" ? (
             <Link href={`/${role}/messages`} className="mt-1 text-sm font-semibold text-brand-cyan-deep">

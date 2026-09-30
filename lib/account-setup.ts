@@ -1,11 +1,10 @@
 // The ONE rule for "is this person's account set up?". Pure, with no server-only or Next.js imports,
 // so the age gate (lib/age-gate.ts), the messaging gate (lib/messaging-permission.ts), Settings, the
 // Messages page and the tests all use exactly the same decision. The database applies the same rule
-// in age_cleared() / messaging_cleared() (0010, 0014).
+// in age_cleared() (0011), which messaging also uses.
 //
 // Account setup means the age check, plus a parent or guardian's approval of the ACCOUNT for anyone
-// under 18. It deliberately does NOT include a guardian's separate permission for private messaging
-// (0014): an account can be fully set up while messaging still waits for that permission.
+// under 18. There is no separate permission for messaging: an approved account can message.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";

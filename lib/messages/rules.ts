@@ -70,8 +70,6 @@ export function isValidAttachmentPath(conversationId: string, path: unknown): pa
 const FRIENDLY: Record<string, string> = {
   not_allowed: "You can't message this person.",
   not_cleared: "Messaging isn't available yet — the age check or guardian approval for one of you isn't complete.",
-  not_permitted:
-    "Messaging isn't available for this student yet: under-18s need their parent or guardian's permission for private messages.",
   not_found: "That conversation couldn't be found.",
   closed: "This conversation is closed for new messages. You can still read it.",
   empty: "Write a message or attach a PDF.",
@@ -98,8 +96,6 @@ export function threadReadOnlyReason(status: string | null | undefined, failed: 
       return null;
     case "not_cleared":
       return "Messaging is paused until the age check or guardian approval is complete.";
-    case "not_permitted":
-      return "Messaging is paused: a parent or guardian's permission for private messages is needed.";
     case "closed":
       return "This conversation is closed for new messages. You can still read it.";
     default:
