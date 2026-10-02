@@ -4,7 +4,8 @@
 -- Paste this whole file into the Supabase SQL Editor (the project whose URL is
 -- NEXT_PUBLIC_SUPABASE_URL in Vercel) and click Run ONCE, on an EMPTY database.
 -- It is the concatenation of, in order:
---   migrations/0001_init.sql, seed.sql, 0002 ... 0017 (every migration file, in order)
+--   migrations/0001_init.sql, seed.sql, 0002 ... 0017 (every migration file, in order;
+--   there is no 0014: it was removed before ever reaching production)
 -- (the individual files remain the source of truth — regenerate this file if
 -- they change). Running it twice will error on "already exists"; that's safe,
 -- just don't re-run it. Already set up? Run only the newest migration files.
@@ -1293,12 +1294,23 @@ grant execute on function decide_guardian_consent(text, text) to service_role;
 -- Run after 0010_age_and_guardian_consent.sql. Adds NEW objects only; nothing existing is changed.
 --
 -- Who may talk to whom (decided with the site owner):
---   * A STUDENT can start a conversation with the teacher of a published lesson, or with the
---     teacher of an activity they have an active subscription to. Nobody else.
---   * A TEACHER can start a conversation only with a student who has an active subscription to
---     one of their activities. Otherwise a teacher can only reply to a student who wrote first.
---   * Both people must be age-cleared (Stage 2: adult, or under-18 with guardian approval).
---   * Admins get NO in-app access to messages or attachments.
+--   * The ONLY student–teacher relationship is an ACTIVE activity subscription, and the database
+--     checks that it belongs to exactly this student, this activity and this activity's teacher.
+--     "Active" = status 'active' and not past current_period_end (an empty end date — free,
+--     one-time and per-lesson billing — stays active until the subscription is cancelled).
+--     A published lesson on its own is NOT a relationship.
+--   * Both people must have an approved account (age_cleared(): an adult, or an under-18 whose
+--     parent or guardian approved the account under 0010). There is no separate messaging consent.
+--   * A STUDENT can start a conversation with the teacher of an activity they are actively
+--     subscribed to.
+--   * A TEACHER can start a conversation with an actively subscribed student only if that student
+--     is 18 or over (Kenyan date, worked out at the moment of the attempt). With an under-18
+--     student the teacher never starts: they can write only after the student has sent the first
+--     message in the conversation.
+--   * When the subscription ends (or the teacher loses approval) nothing is deleted: no new
+--     conversation can be started and existing ones become read-only.
+--   * No student-to-student or teacher-to-teacher conversations. Admins get NO in-app access to
+--     messages or attachments.
 --
 -- Security model — the same one live_sessions and age_records use:
 --   * Clients can only READ, and only conversations they are one of the two people in
@@ -1387,20 +1399,49 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
--- Is there a live student–teacher relationship? Either the teacher has a published lesson (any
--- signed-in student can open those), or the student has an active subscription to one of the
--- teacher's activities. The teacher must be approved.
+-- Does this student have an ACTIVE subscription with this teacher — optionally to one specific
+-- activity? The subscription's teacher must be the activity's own teacher, so a row that names
+-- the wrong teacher never counts. Active = status 'active' and not past its period end; an empty
+-- end date (free, one-time and per-lesson billing) stays active until the subscription is cancelled.
+create or replace function messaging_active_subscription(p_student uuid, p_teacher uuid, p_activity uuid default null)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1
+    from subscriptions s
+    join activities a on a.id = s.activity_id
+    where s.student_id = p_student
+      and s.teacher_id = p_teacher
+      and a.teacher_id = p_teacher
+      and (p_activity is null or s.activity_id = p_activity)
+      and s.status = 'active'
+      and (s.current_period_end is null or s.current_period_end > now())
+  );
+$$;
+
+-- Is there a live student–teacher relationship? The teacher must be approved, and the student
+-- must have an active subscription to one of that teacher's activities. (A published lesson is
+-- not a relationship: any signed-in student can open those.)
 create or replace function messaging_relationship(p_student uuid, p_teacher uuid)
 returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from teacher_profiles tp where tp.profile_id = p_teacher and tp.approved)
-     and (
-       exists (select 1 from lessons l where l.teacher_id = p_teacher and l.status = 'published')
-       or exists (
-         select 1 from subscriptions s
-         where s.student_id = p_student and s.teacher_id = p_teacher and s.status = 'active'
-       )
-     );
+     and messaging_active_subscription(p_student, p_teacher);
+$$;
+
+-- Is this person under 18 on the Kenyan (Africa/Nairobi) calendar date of p_at? Same rule as
+-- lib/age.ts ageInYears(): the 18th birthday counts once today's (month, day) reaches the birth
+-- (month, day), so someone born on 29 February turns 18 on 1 March in a non-leap year. Worked out
+-- from the stored date of birth at the moment of every check — never from consent_status, which
+-- stays 'granted' after 18. No age record counts as under 18 (fails closed).
+create or replace function messaging_is_minor(p_profile uuid, p_at timestamptz default now())
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((
+    select ar.date_of_birth > ((p_at at time zone 'Africa/Nairobi')::date - interval '18 years')::date
+    from age_records ar
+    where ar.profile_id = p_profile
+  ), true);
 $$;
 
 -- Gets or creates the one conversation for a pair. Internal: every public entry point below
@@ -1429,55 +1470,59 @@ end;
 $$;
 
 -- ------------------------------------------------------------
--- Starting a conversation (three, and only three, ways)
+-- Starting a conversation (two, and only two, ways)
 -- ------------------------------------------------------------
 
--- Student, from a lesson page: the lesson must be published and have a teacher.
-create or replace function start_conversation_from_lesson(p_student uuid, p_lesson uuid)
-returns uuid
-language plpgsql security definer set search_path = public as $$
-declare
-  v_teacher uuid;
-begin
-  select teacher_id into v_teacher from lessons where id = p_lesson and status = 'published';
-  if v_teacher is null then
-    raise exception 'messaging:not_allowed';
-  end if;
-  return _open_conversation(p_student, v_teacher);
-end;
-$$;
-
--- Student, from an activity page: the activity must be published and the student actively subscribed.
+-- Student, from an activity page: the activity must be published, and the student must have an
+-- active subscription to exactly this activity, with exactly this activity's teacher. The teacher
+-- is taken from the activity itself, never from the caller.
 create or replace function start_conversation_from_activity(p_student uuid, p_activity uuid)
 returns uuid
 language plpgsql security definer set search_path = public as $$
 declare
   v_teacher uuid;
 begin
-  select a.teacher_id into v_teacher
-  from activities a
-  join subscriptions s on s.activity_id = a.id and s.student_id = p_student and s.status = 'active'
-  where a.id = p_activity and a.status = 'published';
-  if v_teacher is null then
+  select a.teacher_id into v_teacher from activities a where a.id = p_activity and a.status = 'published';
+  if v_teacher is null or not messaging_active_subscription(p_student, v_teacher, p_activity) then
     raise exception 'messaging:not_allowed';
   end if;
   return _open_conversation(p_student, v_teacher);
 end;
 $$;
 
--- Teacher, with one of their own active subscribers.
+-- Teacher, with one of their own active subscribers — and only if that student is 18 or over
+-- right now. A teacher never starts a conversation with an under-18 student (the student may
+-- start one; see messaging_can_send() for when the teacher may then write).
 create or replace function start_conversation_as_teacher(p_teacher uuid, p_student uuid)
 returns uuid
 language plpgsql security definer set search_path = public as $$
 begin
-  if not exists (
-    select 1 from subscriptions s
-    where s.teacher_id = p_teacher and s.student_id = p_student and s.status = 'active'
-  ) then
+  if not messaging_active_subscription(p_student, p_teacher) then
     raise exception 'messaging:not_allowed';
+  end if;
+  if messaging_is_minor(p_student) then
+    raise exception 'messaging:minor_student';
   end if;
   return _open_conversation(p_student, p_teacher);
 end;
+$$;
+
+-- The students a teacher may start a conversation with right now: approved (age-cleared) students
+-- aged 18 or over with an active subscription to one of this approved teacher's activities. Used
+-- for the teacher's "start a conversation" list, so the list and start_conversation_as_teacher()
+-- apply the same rule. Returns ids only — never an age or a date of birth.
+create or replace function messaging_teacher_startable_students(p_teacher uuid)
+returns setof uuid
+language sql stable security definer set search_path = public as $$
+  select distinct s.student_id
+  from subscriptions s
+  join profiles p on p.id = s.student_id and p.role = 'student'
+  where s.teacher_id = p_teacher
+    and exists (select 1 from teacher_profiles tp where tp.profile_id = p_teacher and tp.approved)
+    and age_cleared(p_teacher)
+    and messaging_active_subscription(s.student_id, p_teacher)
+    and age_cleared(s.student_id)
+    and not messaging_is_minor(s.student_id);
 $$;
 
 -- ------------------------------------------------------------
@@ -1485,7 +1530,9 @@ $$;
 -- ------------------------------------------------------------
 
 -- 'ok', or why not: not_found (no such conversation, or the person isn't in it), not_cleared
--- (Stage 2 gate), closed (the relationship no longer exists, so the thread is read-only).
+-- (an account isn't approved), closed (the relationship no longer exists, so the thread is
+-- read-only), awaiting_student (the student is under 18 and hasn't written yet, so the teacher
+-- has to wait for the student's first message).
 create or replace function messaging_can_send(p_user uuid, p_conversation uuid)
 returns text
 language plpgsql stable security definer set search_path = public as $$
@@ -1501,6 +1548,11 @@ begin
   end if;
   if not messaging_relationship(c.student_id, c.teacher_id) then
     return 'closed';
+  end if;
+  if p_user = c.teacher_id
+     and messaging_is_minor(c.student_id)
+     and not exists (select 1 from messages m where m.conversation_id = c.id and m.sender_id = c.student_id) then
+    return 'awaiting_student';
   end if;
   return 'ok';
 end;
@@ -1625,11 +1677,13 @@ grant select on conversations, messages to authenticated;
 -- Supabase also grants EXECUTE on new functions to anon/authenticated. Everything here is for the
 -- server (service role) only, except the read-policy helper, which only ever answers about the caller's own conversations.
 revoke all on function age_cleared(uuid) from public, anon, authenticated;
+revoke all on function messaging_active_subscription(uuid, uuid, uuid) from public, anon, authenticated;
 revoke all on function messaging_relationship(uuid, uuid) from public, anon, authenticated;
+revoke all on function messaging_is_minor(uuid, timestamptz) from public, anon, authenticated;
 revoke all on function _open_conversation(uuid, uuid) from public, anon, authenticated, service_role;
-revoke all on function start_conversation_from_lesson(uuid, uuid) from public, anon, authenticated;
 revoke all on function start_conversation_from_activity(uuid, uuid) from public, anon, authenticated;
 revoke all on function start_conversation_as_teacher(uuid, uuid) from public, anon, authenticated;
+revoke all on function messaging_teacher_startable_students(uuid) from public, anon, authenticated;
 revoke all on function messaging_can_send(uuid, uuid) from public, anon, authenticated;
 revoke all on function send_message(uuid, uuid, text, text, text, text, bigint) from public, anon, authenticated;
 revoke all on function attachment_in_use(text) from public, anon, authenticated;
@@ -1638,10 +1692,12 @@ revoke all on function delete_user_messages(uuid) from public, anon, authenticat
 revoke all on function caller_can_read_conversation(uuid) from public;
 
 grant execute on function age_cleared(uuid) to service_role;
+grant execute on function messaging_active_subscription(uuid, uuid, uuid) to service_role;
 grant execute on function messaging_relationship(uuid, uuid) to service_role;
-grant execute on function start_conversation_from_lesson(uuid, uuid) to service_role;
+grant execute on function messaging_is_minor(uuid, timestamptz) to service_role;
 grant execute on function start_conversation_from_activity(uuid, uuid) to service_role;
 grant execute on function start_conversation_as_teacher(uuid, uuid) to service_role;
+grant execute on function messaging_teacher_startable_students(uuid) to service_role;
 grant execute on function messaging_can_send(uuid, uuid) to service_role;
 grant execute on function send_message(uuid, uuid, text, text, text, text, bigint) to service_role;
 grant execute on function attachment_in_use(text) to service_role;
@@ -2266,365 +2322,6 @@ revoke all on function payment_state_machine() from public, anon, authenticated;
 revoke all on function payment_before_insert() from public, anon, authenticated;
 revoke all on function payment_no_delete_completed() from public, anon, authenticated;
 grant execute on function payment_split_teacher_pct() to service_role;
-
--- ############################################################################
--- ## migrations/0014_messaging_guardian_consent.sql
--- ############################################################################
-
--- Modern Talent Hub — separate parent/guardian permission for private messaging.
--- Run after 0011_messaging.sql. Safe to run once; re-running errors on "already exists" (harmless).
---
--- Why: the Stage 2 guardian consent page (wording "guardian-v1") told parents "there are no private
--- messages between users". 0011 then added student ↔ teacher messaging. A v1 approval therefore never
--- covered messaging, so it cannot be used as permission for it.
---
--- The rule from here on (approved policy):
---   * 18 or over (Kenya date, worked out when access is checked) and platform consent in place
---     ('not_required' or 'granted')  -> messaging allowed automatically. This holds even if a guardian
---     earlier declined or withdrew MESSAGING permission while the student was under 18.
---   * Under 18 -> messaging needs its OWN guardian permission, given on wording that covers it
---     ("guardian-v2" or later). Approving the platform alone is not enough.
---   * Declining or withdrawing messaging never changes platform consent (age_records.consent_status)
---     and never deletes the account. It only switches messaging off.
---
--- What is NOT changed: age_records.consent_status and its meaning, decide_guardian_consent() and
--- age_cleared() are left exactly as 0010/0011 define them. Nothing from the M-Pesa / payment
--- migrations is touched. The only existing objects replaced are the three 0011 messaging functions
--- that decide who may see or use a conversation; their relationship and security rules are kept
--- line for line, with age_cleared() swapped for messaging_cleared().
---
--- Existing data: every existing row starts with messaging permission OFF. Existing under-18 students
--- (approved on v1 wording) keep using the platform but must ask their parent/guardian for messaging.
--- Adults are unaffected, because messaging_cleared() lets them through on age alone.
-
--- ------------------------------------------------------------
--- Consent wording versions (server-only reference table)
--- ------------------------------------------------------------
-
-create table guardian_consent_versions (
-  version          text primary key,
-  covers_messaging boolean not null,
-  summary          text not null,
-  introduced_at    timestamptz not null default now()
-);
-
-alter table guardian_consent_versions enable row level security;
--- No policies and no API privileges: only the server (service role) and the database itself read it.
-revoke all on guardian_consent_versions from anon, authenticated;
-
-insert into guardian_consent_versions (version, covers_messaging, summary) values
-  ('guardian-v1', false,
-   'Stage 2 wording: permission to use the platform. Stated there are no private messages between users; does NOT cover messaging.'),
-  ('guardian-v2', true,
-   'Permission to use the platform, plus a separate, optional choice to allow private messages (with PDF homework) between the young person and their teachers.');
-
--- ------------------------------------------------------------
--- age_records: guardian messaging permission, separate from platform consent
--- ------------------------------------------------------------
-
-alter table age_records
-  add column guardian_messaging_allowed    boolean not null default false,
-  add column guardian_messaging_status     text not null default 'not_requested'
-    check (guardian_messaging_status in ('not_requested', 'granted', 'declined', 'withdrawn')),
-  add column guardian_messaging_version    text references guardian_consent_versions(version),
-  add column guardian_messaging_decided_at timestamptz,
-  add constraint age_records_messaging_consistent
-    check (guardian_messaging_allowed = (guardian_messaging_status = 'granted'));
-
--- ------------------------------------------------------------
--- guardian_consent_requests: what the request is for, which wording, and the messaging answer
--- ------------------------------------------------------------
-
--- Existing rows (and any request still created by pre-0014 app code) were sent with the v1 wording,
--- so that is the default. New app code always sets purpose and version explicitly.
-alter table guardian_consent_requests
-  add column purpose               text not null default 'platform' check (purpose in ('platform', 'messaging')),
-  add column consent_version       text not null default 'guardian-v1' references guardian_consent_versions(version),
-  add column messaging_decision    text check (messaging_decision in ('approved', 'declined')),
-  add column messaging_decided_at  timestamptz,
-  add constraint guardian_consent_requests_messaging_decided
-    check ((messaging_decision is null) = (messaging_decided_at is null));
-
--- A messaging permission can only ever rest on wording that covered messaging. Enforced in the
--- database so that no code path — not even a direct service-role write — can turn a v1 approval
--- into messaging permission.
-create or replace function guard_messaging_consent_version()
-returns trigger language plpgsql set search_path = public as $$
-begin
-  if tg_table_name = 'age_records' then
-    if new.guardian_messaging_allowed and not exists (
-      select 1 from guardian_consent_versions v
-      where v.version = new.guardian_messaging_version and v.covers_messaging
-    ) then
-      raise exception 'Messaging permission needs guardian consent wording that covers messaging.';
-    end if;
-  else
-    if new.messaging_decision = 'approved' and not exists (
-      select 1 from guardian_consent_versions v
-      where v.version = new.consent_version and v.covers_messaging
-    ) then
-      raise exception 'Messaging permission needs guardian consent wording that covers messaging.';
-    end if;
-  end if;
-  return new;
-end;
-$$;
-
-create trigger trg_age_records_messaging_version
-  before insert or update on age_records
-  for each row execute function guard_messaging_consent_version();
-
-create trigger trg_guardian_requests_messaging_version
-  before insert or update on guardian_consent_requests
-  for each row execute function guard_messaging_consent_version();
-
--- ------------------------------------------------------------
--- Age, worked out on the day it is checked (no birthday job needed)
--- ------------------------------------------------------------
-
--- Whole years old on the Kenyan calendar date of p_at. Same rule as lib/age.ts ageInYears():
--- the birthday counts once today's (month, day) reaches the birth (month, day). So someone born on
--- 29 February turns a year older on 1 March in a non-leap year (28 February is still "before").
-create or replace function age_in_years_kenya(p_dob date, p_at timestamptz default now())
-returns int
-language sql stable set search_path = public as $$
-  select case when p_dob is null then null else
-    extract(year from t)::int - extract(year from p_dob)::int
-    - case
-        when extract(month from t) < extract(month from p_dob)
-          or (extract(month from t) = extract(month from p_dob) and extract(day from t) < extract(day from p_dob))
-        then 1 else 0
-      end
-  end
-  from (select (p_at at time zone 'Africa/Nairobi')::date as t) today;
-$$;
-
--- ------------------------------------------------------------
--- The messaging gate
--- ------------------------------------------------------------
-
--- May this person use private messaging right now?
---   * platform consent must be in place ('not_required' or 'granted'), exactly as age_cleared(); and
---   * they are 18 or over today (Kenya date), OR a guardian gave messaging permission on wording
---     that covers it.
--- An earlier guardian decline/withdrawal of messaging does not matter once the person is 18.
-create or replace function messaging_cleared(p_profile uuid, p_at timestamptz default now())
-returns boolean
-language sql stable security definer set search_path = public as $$
-  select coalesce((
-    select ar.consent_status in ('not_required', 'granted')
-       and (
-         age_in_years_kenya(ar.date_of_birth, p_at) >= 18
-         or (ar.guardian_messaging_allowed
-             and exists (select 1 from guardian_consent_versions v
-                         where v.version = ar.guardian_messaging_version and v.covers_messaging))
-       )
-    from age_records ar
-    where ar.profile_id = p_profile
-  ), false);
-$$;
-
--- ------------------------------------------------------------
--- Recording guardian decisions (server-only)
--- ------------------------------------------------------------
-
--- Platform consent on the v2 page, with the optional messaging choice, in ONE transaction.
--- The platform part is delegated unchanged to decide_guardian_consent(). The messaging choice is
--- recorded only if the platform was approved AND the request's wording covers messaging; for a v1
--- request (or a platform decline) the messaging choice is ignored and messaging stays off.
--- p_messaging: 'approved' | 'declined' | null (no answer = not allowed).
--- Returns what decide_guardian_consent() returned.
-create or replace function decide_guardian_consent_with_messaging(p_token_hash text, p_decision text, p_messaging text)
-returns text
-language plpgsql security definer set search_path = public as $$
-declare
-  r guardian_consent_requests;
-  v_result text;
-  v_covers boolean;
-begin
-  select * into r from guardian_consent_requests where token_hash = p_token_hash;
-  if found and r.purpose <> 'platform' then
-    return 'invalid';
-  end if;
-
-  v_result := decide_guardian_consent(p_token_hash, p_decision);
-
-  if v_result = 'approved' and p_messaging in ('approved', 'declined') then
-    select covers_messaging into v_covers from guardian_consent_versions where version = r.consent_version;
-    if coalesce(v_covers, false) then
-      update guardian_consent_requests
-      set messaging_decision = p_messaging, messaging_decided_at = now()
-      where id = r.id;
-
-      update age_records
-      set guardian_messaging_allowed    = (p_messaging = 'approved'),
-          guardian_messaging_status     = case when p_messaging = 'approved' then 'granted' else 'declined' end,
-          guardian_messaging_version    = r.consent_version,
-          guardian_messaging_decided_at = now()
-      where profile_id = r.profile_id;
-    end if;
-  end if;
-
-  return v_result;
-end;
-$$;
-
--- A messaging-only request (the student asked "allow messaging" after their platform approval).
--- Checked and consumed atomically. Never touches consent_status and never deletes anything.
--- Returns approved | declined | used | expired | invalid.
-create or replace function decide_guardian_messaging_consent(p_token_hash text, p_decision text)
-returns text
-language plpgsql security definer set search_path = public as $$
-declare
-  r guardian_consent_requests;
-begin
-  if p_decision is null or p_decision not in ('approved', 'declined') then
-    return 'invalid';
-  end if;
-
-  select * into r from guardian_consent_requests where token_hash = p_token_hash for update;
-  if not found or r.purpose <> 'messaging' then return 'invalid'; end if;
-  if r.decided_at is not null then return 'used'; end if;
-  if r.expires_at < now() then return 'expired'; end if;
-
-  if not exists (select 1 from guardian_consent_versions where version = r.consent_version and covers_messaging) then
-    return 'invalid';
-  end if;
-
-  -- Only for an account whose platform consent is granted, and only from the guardian on record.
-  if not exists (
-    select 1 from age_records
-    where profile_id = r.profile_id
-      and consent_status = 'granted'
-      and lower(guardian_email) = lower(r.guardian_email)
-  ) then
-    return 'invalid';
-  end if;
-
-  update guardian_consent_requests
-  set decided_at = now(), decision = p_decision,
-      messaging_decision = p_decision, messaging_decided_at = now()
-  where id = r.id;
-
-  update age_records
-  set guardian_messaging_allowed    = (p_decision = 'approved'),
-      guardian_messaging_status     = case when p_decision = 'approved' then 'granted' else 'declined' end,
-      guardian_messaging_version    = r.consent_version,
-      guardian_messaging_decided_at = now()
-  where profile_id = r.profile_id;
-
-  return p_decision;
-end;
-$$;
-
--- A guardian withdraws messaging permission (they ask support; see the Privacy Policy). Switches
--- messaging off at once — both people lose access to the conversation — and cancels any messaging
--- request still waiting. Never touches consent_status, never deletes the account or the messages.
--- Returns 'withdrawn', or 'no_record' if the person has no age record.
-create or replace function withdraw_guardian_messaging_consent(p_profile uuid)
-returns text
-language plpgsql security definer set search_path = public as $$
-begin
-  update age_records
-  set guardian_messaging_allowed    = false,
-      guardian_messaging_status     = 'withdrawn',
-      guardian_messaging_decided_at = now()
-  where profile_id = p_profile;
-  if not found then return 'no_record'; end if;
-
-  update guardian_consent_requests
-  set expires_at = now()
-  where profile_id = p_profile and purpose = 'messaging' and decided_at is null and expires_at > now();
-
-  return 'withdrawn';
-end;
-$$;
-
--- ------------------------------------------------------------
--- Rewire the three 0011 gates from age_cleared() to messaging_cleared()
--- ------------------------------------------------------------
--- Everything else in each function is exactly as in 0011.
-
-create or replace function caller_can_read_conversation(p_conversation uuid)
-returns boolean
-language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from conversations c
-    where c.id = p_conversation
-      and auth.uid() in (c.student_id, c.teacher_id)
-      and messaging_cleared(c.student_id)
-      and messaging_cleared(c.teacher_id)
-  );
-$$;
-
-create or replace function _open_conversation(p_student uuid, p_teacher uuid)
-returns uuid
-language plpgsql security definer set search_path = public as $$
-declare
-  v_id uuid;
-begin
-  if not exists (select 1 from profiles where id = p_student and role = 'student')
-     or not exists (select 1 from profiles where id = p_teacher and role = 'teacher')
-     or not exists (select 1 from teacher_profiles where profile_id = p_teacher and approved) then
-    raise exception 'messaging:not_allowed';
-  end if;
-  if not (age_cleared(p_student) and age_cleared(p_teacher)) then
-    raise exception 'messaging:not_cleared';
-  end if;
-  if not (messaging_cleared(p_student) and messaging_cleared(p_teacher)) then
-    raise exception 'messaging:not_permitted';
-  end if;
-
-  insert into conversations (student_id, teacher_id) values (p_student, p_teacher)
-  on conflict (student_id, teacher_id) do nothing;
-
-  select id into v_id from conversations where student_id = p_student and teacher_id = p_teacher;
-  return v_id;
-end;
-$$;
-
--- 'ok', or why not: not_found, not_cleared (platform age/consent gate), not_permitted (no messaging
--- permission: under 18 without the guardian's messaging approval), closed (no relationship any more).
-create or replace function messaging_can_send(p_user uuid, p_conversation uuid)
-returns text
-language plpgsql stable security definer set search_path = public as $$
-declare
-  c conversations%rowtype;
-begin
-  select * into c from conversations where id = p_conversation;
-  if not found or p_user is null or p_user not in (c.student_id, c.teacher_id) then
-    return 'not_found';
-  end if;
-  if not (age_cleared(c.student_id) and age_cleared(c.teacher_id)) then
-    return 'not_cleared';
-  end if;
-  if not (messaging_cleared(c.student_id) and messaging_cleared(c.teacher_id)) then
-    return 'not_permitted';
-  end if;
-  if not messaging_relationship(c.student_id, c.teacher_id) then
-    return 'closed';
-  end if;
-  return 'ok';
-end;
-$$;
-
--- ------------------------------------------------------------
--- Privileges: every new function is server-only
--- ------------------------------------------------------------
--- (create or replace keeps the 0011 privileges on the three rewired functions.)
-
-revoke all on function guard_messaging_consent_version() from public, anon, authenticated;
-revoke all on function age_in_years_kenya(date, timestamptz) from public, anon, authenticated;
-revoke all on function messaging_cleared(uuid, timestamptz) from public, anon, authenticated;
-revoke all on function decide_guardian_consent_with_messaging(text, text, text) from public, anon, authenticated;
-revoke all on function decide_guardian_messaging_consent(text, text) from public, anon, authenticated;
-revoke all on function withdraw_guardian_messaging_consent(uuid) from public, anon, authenticated;
-
-grant execute on function age_in_years_kenya(date, timestamptz) to service_role;
-grant execute on function messaging_cleared(uuid, timestamptz) to service_role;
-grant execute on function decide_guardian_consent_with_messaging(text, text, text) to service_role;
-grant execute on function decide_guardian_messaging_consent(text, text) to service_role;
-grant execute on function withdraw_guardian_messaging_consent(uuid) to service_role;
 
 -- ############################################################################
 -- ## migrations/0015_hide_payer_phone.sql

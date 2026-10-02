@@ -27,7 +27,7 @@ export default async function TeacherMessagesPage() {
         basePath="/teacher/messages"
         conversations={conversations}
         emptyTitle="No messages yet"
-        emptyDescription="Students can message you from your lessons. You can also start a conversation with a student enrolled in one of your activities."
+        emptyDescription="Students enrolled in your activities can message you. You can also start a conversation with an adult student enrolled in one of your activities."
       />
 
       {enrolled.length > 0 && (

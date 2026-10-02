@@ -701,11 +701,6 @@ export interface Database {
           consent_status: "not_required" | "pending" | "granted" | "declined";
           consent_decided_at: string | null;
           created_at: string;
-          // 0014_messaging_guardian_consent.sql — separate guardian permission for private messaging.
-          guardian_messaging_allowed: boolean;
-          guardian_messaging_status: "not_requested" | "granted" | "declined" | "withdrawn";
-          guardian_messaging_version: string | null;
-          guardian_messaging_decided_at: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["age_records"]["Row"]> & {
           profile_id: string;
@@ -733,11 +728,6 @@ export interface Database {
           decided_at: string | null;
           decision: "approved" | "declined" | null;
           created_at: string;
-          // 0014_messaging_guardian_consent.sql
-          purpose: "platform" | "messaging";
-          consent_version: string;
-          messaging_decision: "approved" | "declined" | null;
-          messaging_decided_at: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["guardian_consent_requests"]["Row"]> & {
           profile_id: string;
@@ -755,22 +745,6 @@ export interface Database {
             referencedColumns: ["id"];
           },
         ];
-      };
-      // 0014_messaging_guardian_consent.sql — server-only list of guardian consent wording versions.
-      guardian_consent_versions: {
-        Row: {
-          version: string;
-          covers_messaging: boolean;
-          summary: string;
-          introduced_at: string;
-        };
-        Insert: Partial<Database["public"]["Tables"]["guardian_consent_versions"]["Row"]> & {
-          version: string;
-          covers_messaging: boolean;
-          summary: string;
-        };
-        Update: Partial<Database["public"]["Tables"]["guardian_consent_versions"]["Row"]>;
-        Relationships: [];
       };
       // 0011_messaging.sql — read by the two people in a conversation; written by server code only.
       conversations: {
@@ -912,9 +886,9 @@ export interface Database {
         Returns: boolean;
       };
       // Server-only, from 0011_messaging.sql. Failures are raised as "messaging:<reason>".
-      start_conversation_from_lesson: {
-        Args: { p_student: string; p_lesson: string };
-        Returns: string;
+      age_cleared: {
+        Args: { p_profile: string };
+        Returns: boolean;
       };
       start_conversation_from_activity: {
         Args: { p_student: string; p_activity: string };
@@ -924,9 +898,15 @@ export interface Database {
         Args: { p_teacher: string; p_student: string };
         Returns: string;
       };
+      // Adult, approved students with an active subscription to this approved teacher's activities: the
+      // only students the teacher may start a conversation with. Ids only, never ages.
+      messaging_teacher_startable_students: {
+        Args: { p_teacher: string };
+        Returns: string[];
+      };
       messaging_can_send: {
         Args: { p_user: string; p_conversation: string };
-        Returns: "ok" | "not_found" | "not_cleared" | "not_permitted" | "closed";
+        Returns: "ok" | "not_found" | "not_cleared" | "closed" | "awaiting_student";
       };
       send_message: {
         Args: {
@@ -951,27 +931,6 @@ export interface Database {
       delete_user_messages: {
         Args: { p_user: string };
         Returns: number;
-      };
-      // Server-only, from 0014_messaging_guardian_consent.sql.
-      age_in_years_kenya: {
-        Args: { p_dob: string; p_at?: string };
-        Returns: number;
-      };
-      messaging_cleared: {
-        Args: { p_profile: string; p_at?: string };
-        Returns: boolean;
-      };
-      decide_guardian_consent_with_messaging: {
-        Args: { p_token_hash: string; p_decision: string; p_messaging: string | null };
-        Returns: "approved" | "declined" | "used" | "expired" | "invalid";
-      };
-      decide_guardian_messaging_consent: {
-        Args: { p_token_hash: string; p_decision: string };
-        Returns: "approved" | "declined" | "used" | "expired" | "invalid";
-      };
-      withdraw_guardian_messaging_consent: {
-        Args: { p_profile: string };
-        Returns: "withdrawn" | "no_record";
       };
     };
   };

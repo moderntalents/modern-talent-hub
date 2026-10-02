@@ -2,10 +2,9 @@ import Link from "next/link";
 import type { MessagingState } from "@/lib/messaging-permission";
 import { messagingLockedLabel } from "@/lib/messaging-locked-label";
 
-// Stands in for "Message teacher"/"Message coach" when a student can't message yet — for
-// either reason: their parent/guardian hasn't allowed messaging specifically (needs_guardian),
-// or their own account age-check/consent isn't finished yet (not_cleared). Always links to the
-// Messages page, which explains the specific reason and offers the right next step.
+// Stands in for "Message coach" when a student can't message: their account
+// setup isn't finished (not_cleared), or messaging can't be checked right now (unavailable). Always
+// links to the Messages page, which explains the reason and offers the right next step.
 export function MessagingLockedNote({ state }: { state: MessagingState }) {
   return (
     <Link

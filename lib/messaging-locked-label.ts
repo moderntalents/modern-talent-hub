@@ -7,10 +7,10 @@ import type { MessagingState } from "@/lib/messaging-permission";
 
 export function messagingLockedLabel(state: MessagingState): string {
   switch (state.kind) {
-    case "needs_guardian":
-      return "Needs a parent's OK";
     case "not_cleared":
       return "Finish account setup";
+    case "unavailable":
+      return "Messaging unavailable";
     case "allowed":
       return "Message"; // not expected to render — canMessage is true, callers show StartConversationButton instead
   }

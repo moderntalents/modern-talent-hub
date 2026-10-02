@@ -70,10 +70,10 @@ export function isValidAttachmentPath(conversationId: string, path: unknown): pa
 const FRIENDLY: Record<string, string> = {
   not_allowed: "You can't message this person.",
   not_cleared: "Messaging isn't available yet — the age check or guardian approval for one of you isn't complete.",
-  not_permitted:
-    "Messaging isn't available for this student yet: under-18s need their parent or guardian's permission for private messages.",
   not_found: "That conversation couldn't be found.",
   closed: "This conversation is closed for new messages. You can still read it.",
+  minor_student: "You can't start a conversation with a student who is under 18. They can message you, and you can reply once they have written.",
+  awaiting_student: "You can reply once the student has written to you.",
   empty: "Write a message or attach a PDF.",
   too_long: `Messages can be at most ${MAX_BODY_CHARS} characters.`,
   bad_request: "That message couldn't be sent.",
@@ -83,4 +83,26 @@ const FRIENDLY: Record<string, string> = {
 export function friendlyMessagingError(raw: string | null | undefined): string {
   const reason = /messaging:([a-z_]+)/.exec(raw ?? "")?.[1];
   return (reason && FRIENDLY[reason]) || "Something went wrong. Please try again.";
+}
+
+/**
+ * Why a conversation the person can SEE can't take a new message from them, in plain words — or null
+ * when they may write (the message box is shown). `status` is what messaging_can_send() returned;
+ * `failed` is true when that check itself errored. A failed check keeps the box hidden (fail closed)
+ * but says so, instead of wrongly calling the conversation "closed".
+ */
+export function threadReadOnlyReason(status: string | null | undefined, failed: boolean): string | null {
+  if (failed) return "We couldn't check whether you can reply right now. Please refresh the page in a moment.";
+  switch (status) {
+    case "ok":
+      return null;
+    case "not_cleared":
+      return "Messaging is paused until the age check or guardian approval is complete.";
+    case "closed":
+      return "This conversation is closed for new messages. You can still read it.";
+    case "awaiting_student":
+      return "You can reply once the student has written to you.";
+    default:
+      return "We couldn't check whether you can reply right now. Please refresh the page in a moment.";
+  }
 }

@@ -1,9 +1,8 @@
 // The messaging flows. Every function here assumes the CALLER has already been identified from
 // their login (see lib/messages/actions.ts) — `userId` is never taken from the browser — and that
-// they are age-cleared and have messaging permission (0014). The rules about WHO may talk to WHOM
-// live in the database (supabase/migrations/0011_messaging.sql, gated by 0014) and are re-checked
-// there on every call; this file adds what a database cannot: rate limits, and inspecting the
-// uploaded file's real bytes.
+// they are age-cleared. The rules about WHO may talk to WHOM live in the database
+// (supabase/migrations/0011_messaging.sql) and are re-checked there on every call; this file adds
+// what a database cannot: rate limits, and inspecting the uploaded file's real bytes.
 //
 // It takes the service-role client as a parameter (rather than creating one) so the tests can run
 // the same code against a real Postgres.
@@ -60,7 +59,9 @@ async function sendBlocker(admin: Admin, userId: string, conversationId: string)
 }
 
 // ---------------------------------------------------------------------------------------------
-// Starting a conversation — three ways, and only three. The database decides each one.
+// Starting a conversation — two ways, and only two. The database decides each one: an active
+// subscription to the activity (matching student, activity and teacher) is the only relationship,
+// and a teacher can never start with a student who is under 18.
 // ---------------------------------------------------------------------------------------------
 
 async function start(
@@ -74,14 +75,6 @@ async function start(
   return { ok: true, conversationId: data };
 }
 
-/** Student → the teacher of a published lesson. */
-export function startFromLesson(admin: Admin, studentId: string, lessonId: string) {
-  if (!isUuid(lessonId)) return Promise.resolve(fail("This lesson isn't available."));
-  return start(admin, studentId, () =>
-    admin.rpc("start_conversation_from_lesson", { p_student: studentId, p_lesson: lessonId }),
-  );
-}
-
 /** Student → the teacher of an activity they have an active subscription to. */
 export function startFromActivity(admin: Admin, studentId: string, activityId: string) {
   if (!isUuid(activityId)) return Promise.resolve(fail("This activity isn't available."));
@@ -90,7 +83,7 @@ export function startFromActivity(admin: Admin, studentId: string, activityId: s
   );
 }
 
-/** Teacher → one of their own active subscribers. */
+/** Teacher → one of their own active subscribers, who must be 18 or over (checked by the database). */
 export function startAsTeacher(admin: Admin, teacherId: string, studentId: string) {
   if (!isUuid(studentId)) return Promise.resolve(fail("That student couldn't be found."));
   return start(admin, teacherId, () =>
