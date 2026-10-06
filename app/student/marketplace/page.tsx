@@ -36,7 +36,7 @@ export default async function MarketplacePage({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="font-head text-xl font-extrabold">Marketplace</h1>
+        <h1 className="font-head text-xl font-extrabold">Activities</h1>
         <p className="text-sm text-ink-soft">Sports, Martial Arts, Performing Arts &amp; Music, Creative Tech &amp; Mind Games.</p>
       </div>
 

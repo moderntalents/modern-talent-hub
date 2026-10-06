@@ -57,7 +57,7 @@ export default async function SubscriptionsPage() {
           })}
         </div>
       ) : (
-        <EmptyState title="No subscriptions yet" description="Enrol in a marketplace activity to see it here." />
+        <EmptyState title="No subscriptions yet" description="Enrol in an activity to see it here." />
       )}
 
       <div>
