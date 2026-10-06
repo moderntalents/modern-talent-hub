@@ -38,7 +38,7 @@ export default async function StudentHome() {
         <Link href="/student/marketplace">
           <Card className="flex flex-col gap-1">
             <span className="text-2xl">🎯</span>
-            <p className="font-semibold">Marketplace</p>
+            <p className="font-semibold">Activities</p>
             <p className="text-xs text-ink-faint">Sports, arts, music &amp; more</p>
           </Card>
         </Link>
@@ -57,7 +57,7 @@ export default async function StudentHome() {
         ) : (
           <EmptyState
             title="No active enrolments yet"
-            description="Browse the marketplace to subscribe to a teacher's sports, arts or music activity."
+            description="Browse Activities to subscribe to a teacher's sports, arts or music activity."
           />
         )}
       </div>
