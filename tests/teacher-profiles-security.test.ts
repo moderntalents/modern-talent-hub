@@ -93,7 +93,7 @@ describe("AFTER 0012: attacks fail, legitimate flows keep working", () => {
       update platform_wallet set balance = 0;
       reset session_replication_role;
       update teacher_profiles set wallet_balance = case profile_id when '${ID.T1}' then 5000 else 0 end,
-        approved = profile_id in ('${ID.T1}', '${ID.T2}', '${ID.T4}'), bio = null, specialty = null, activated = false, activated_at = null;
+        approved = profile_id in ('${ID.T1}', '${ID.T2}', '${ID.T4}'), bio = null, specialty = null;
     `);
   });
 
@@ -142,7 +142,7 @@ describe("AFTER 0012: attacks fail, legitimate flows keep working", () => {
 
   describe("legitimate flows (12–26)", () => {
     test("12. a teacher reads their OWN row (dashboard / wallet page)", async () => {
-      const r = await attempt({ id: ID.T1 }, "select wallet_balance::int as w, mpesa_number, approved, activated from teacher_profiles where profile_id = $1", [ID.T1]);
+      const r = await attempt({ id: ID.T1 }, "select wallet_balance::int as w, mpesa_number, approved from teacher_profiles where profile_id = $1", [ID.T1]);
       assert.ok(r.ok && r.rows.length === 1 && r.rows[0].w === 5000 && r.rows[0].mpesa_number === "0711222333" && r.rows[0].approved === true);
     });
     test("13. a teacher can still edit their own bio, specialty and payout number", async () => {
@@ -165,9 +165,9 @@ describe("AFTER 0012: attacks fail, legitimate flows keep working", () => {
       assert.equal((await attempt({ id: ID.ADMIN }, "update teacher_profiles set wallet_balance = 1 where profile_id = $1", [ID.T1])).ok, false);
       assert.equal(await balance(ID.T1), 5000);
     });
-    test("18. the server (service role) can activate a coach", async () => {
-      const r = await attempt("service", "update teacher_profiles set activated = true, activated_at = now() where profile_id = $1 returning activated", [ID.T1]);
-      assert.ok(r.ok && r.rows.length === 1 && r.rows[0].activated === true);
+    test("18. there is no coach activation step any more: no flag to flip, so approved coaches publish for free", async () => {
+      const col = await db.query("select 1 from information_schema.columns where table_name = 'teacher_profiles' and column_name in ('activated', 'activated_at')");
+      assert.equal(col.rows.length, 0);
     });
     test("19. payment completion (service role) still credits the teacher's wallet by 70%", async () => {
       await db.exec(`
