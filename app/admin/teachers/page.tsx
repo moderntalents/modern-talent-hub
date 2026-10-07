@@ -28,7 +28,6 @@ export default async function AdminTeachersPage() {
                   </p>
                   <div className="mt-1 flex gap-1.5">
                     <Badge tone={t.approved ? "success" : "warning"}>{t.approved ? "Approved" : "Pending"}</Badge>
-                    <Badge tone={t.activated ? "success" : "warning"}>{t.activated ? "Activated" : "Not activated"}</Badge>
                   </div>
                 </div>
                 <ApproveButton profileId={t.profile_id} approved={t.approved} />
