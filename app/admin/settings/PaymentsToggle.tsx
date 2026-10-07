@@ -13,7 +13,7 @@ export function PaymentsToggle({ enabled }: { enabled: boolean }) {
     if (
       !enabled &&
       !window.confirm(
-        "Turn payments ON? Coaches will have to pay the activation fee and students will be charged for priced activities.",
+        "Turn payments ON? Students will be charged for priced activities. Coaches are never charged; each payment is split 70% coach / 30% MTH.",
       )
     ) {
       return;

@@ -19,9 +19,9 @@ import { removeUserAvatars } from "@/lib/avatars/service";
 //     the database when the profile goes), so the teacher's name/details disappear.
 //   * SCRUB (only if the person has payment/payout records): those records reference the
 //     user and the law expects them to be kept, so the row stays but every personal
-//     detail is blanked (including the M-Pesa number / bank account on payout requests and
-//     the phone number on activation payments), the login identities (e.g. Google) are
-//     removed, the login is disabled and the email replaced. What stays is an anonymous
+//     detail is blanked (including the M-Pesa number / bank account on payout requests),
+//     the login identities (e.g. Google) are removed, the login is disabled and the email
+//     replaced. What stays is an anonymous
 //     ledger: amounts, dates, statuses and payment reference numbers. (Payments may be
 //     switched off, in which case nobody has records — this is ready for when they do.)
 
@@ -46,18 +46,16 @@ async function removeStoredFiles(admin: Admin, bucket: string, paths: string[]) 
 }
 
 async function hasFinancialRecords(admin: Admin, userId: string): Promise<boolean> {
-  const [transactions, activations, withdrawals] = await Promise.all([
+  const [transactions, withdrawals] = await Promise.all([
     admin
       .from("payment_transactions")
       .select("id", { count: "exact", head: true })
       .or(`student_id.eq.${userId},teacher_id.eq.${userId}`),
-    admin.from("coach_activation_payments").select("id", { count: "exact", head: true }).eq("teacher_id", userId),
     admin.from("withdrawal_requests").select("id", { count: "exact", head: true }).eq("teacher_id", userId),
   ]);
   must(transactions, "check payments");
-  must(activations, "check activation payments");
   must(withdrawals, "check withdrawals");
-  return (transactions.count ?? 0) + (activations.count ?? 0) + (withdrawals.count ?? 0) > 0;
+  return (transactions.count ?? 0) + (withdrawals.count ?? 0) > 0;
 }
 
 // A student's uploaded assignment files.
@@ -130,10 +128,6 @@ async function scrubAccount(admin: Admin, userId: string) {
   must(
     await admin.from("withdrawal_requests").update({ destination: REMOVED, notes: null }).eq("teacher_id", userId),
     "remove payout details",
-  );
-  must(
-    await admin.from("coach_activation_payments").update({ phone: REMOVED }).eq("teacher_id", userId),
-    "remove activation phone numbers",
   );
   must(
     await admin

@@ -1,11 +1,8 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { activateCoachForFree } from "@/lib/activation";
 import { getSessionProfile } from "@/lib/auth";
 import { formatKes } from "@/lib/constants";
 import { Card } from "@/components/ui/Card";
-import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAYMENT_VISIBLE_COLUMNS } from "@/lib/payment-columns";
 
@@ -29,19 +26,6 @@ export default async function TeacherHome() {
         .order("created_at", { ascending: false })
         .limit(5),
     ]);
-
-  if (!teacherProfile?.activated) {
-    // Free mode (payments off): activate on the spot. No-op once payments are on.
-    if (teacherProfile && (await activateCoachForFree(session!.user.id))) redirect("/teacher");
-
-    return (
-      <EmptyState
-        title="Activate your coach account"
-        description="Pay the one-time activation fee via M-Pesa to unlock your coach dashboard."
-        action={<LinkButton href="/teacher/activate">Activate account</LinkButton>}
-      />
-    );
-  }
 
   if (!teacherProfile?.approved) {
     return (

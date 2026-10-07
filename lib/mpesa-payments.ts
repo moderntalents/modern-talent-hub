@@ -137,60 +137,6 @@ async function logCallback(
 }
 
 // ============================================================================
-// Coach activation payments — a separate table/flow, unchanged from Phase 1.
-// ============================================================================
-
-interface ActivationCallbackShape {
-  ResultDesc?: string;
-  CallbackMetadata?: { Item?: CallbackItem[] };
-}
-
-/** Applies a Daraja result to a coach activation payment. Unchanged from Phase 1. */
-export async function reconcileActivationPayment(
-  admin: AdminClient,
-  checkoutRequestId: string,
-  resultCode: number,
-  stkCallback: ActivationCallbackShape,
-): Promise<boolean> {
-  const { data: payment } = await admin
-    .from("coach_activation_payments")
-    .select("id, status")
-    .eq("checkout_request_id", checkoutRequestId)
-    .maybeSingle();
-
-  if (!payment) return false;
-  if ((payment as { status: string }).status === "completed") return true;
-
-  const paymentRow = payment as { id: string; status: string };
-
-  if (resultCode === 0) {
-    const receipt = stkCallback.CallbackMetadata?.Item?.find((i) => i.Name === "MpesaReceiptNumber")?.Value;
-    const { error } = await admin
-      .from("coach_activation_payments")
-      .update({
-        status: "completed",
-        provider_reference: String(receipt ?? ""),
-        result_desc: stkCallback.ResultDesc ?? null,
-      })
-      .eq("id", paymentRow.id)
-      .neq("status", "completed");
-    if (error) {
-      console.error(
-        `[activation] PAID but could not complete payment ${paymentRow.id} (${checkoutRequestId}):`,
-        error.message,
-      );
-    }
-  } else if (paymentRow.status === "pending") {
-    await admin
-      .from("coach_activation_payments")
-      .update({ status: "failed", result_desc: stkCallback.ResultDesc ?? null })
-      .eq("id", paymentRow.id)
-      .eq("status", "pending");
-  }
-  return true;
-}
-
-// ============================================================================
 // Subscription payments — the Phase 2 hardened callback path.
 // ============================================================================
 
@@ -204,8 +150,7 @@ export type CallbackOutcome =
 
 /**
  * Applies one Daraja STK callback to `payment_transactions`, end to end:
- * logs it, matches it to a payment by CheckoutRequestID (falling back to the
- * separate coach-activation flow), verifies amount and phone where a value
+ * logs it, matches it to a payment by CheckoutRequestID, verifies amount and phone where a value
  * exists to check against, and only then completes the payment — atomically
  * crediting both wallets via the Phase 1 database trigger. Never throws for
  * an ordinary "nothing to do" case (unmatched, duplicate, already final);
@@ -249,18 +194,8 @@ export async function applyStkCallback(
   }
 
   if (!transaction) {
-    // Not a subscription payment — it may be a coach activation payment
-    // (a separate table with its own, unchanged, reconciliation). That flow
-    // needs the raw CallbackMetadata shape (to pull the receipt number), so
-    // it's re-derived from the original payload rather than from `parsed`.
-    const rawStkCallback = (rawPayload as { Body?: { stkCallback?: ActivationCallbackShape } })?.Body?.stkCallback ?? {};
-    const handled = await reconcileActivationPayment(admin, parsed.checkoutRequestId, parsed.resultCode, rawStkCallback);
-    await logOutcome(
-      "unmatched",
-      handled
-        ? "matched a coach activation payment, not a subscription payment"
-        : "no matching payment_transactions or coach_activation_payments row",
-    );
+    // Not one of our student payments (for example a retired coach-activation prompt). Nothing to credit.
+    await logOutcome("unmatched", "no matching payment_transactions row");
     return "unmatched";
   }
 
