@@ -1,107 +1,97 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { arePaymentsEnabled } from "@/lib/settings";
-import { ACTIVITY_CATEGORIES, BILLING_LABELS, formatKes, type ActivityCategoryId } from "@/lib/constants";
-import { Card, Badge } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { LiveBadge } from "@/components/live/LiveBadge";
-import { getLiveSummaries } from "@/lib/live/queries";
-import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
+import { redirect } from "next/navigation";
+import { getSessionProfile } from "@/lib/auth";
+import { findActivity, findCategory, listActivityChoices, normalizeSearch } from "@/lib/directory/rules";
+import { CoachBrowser } from "@/components/directory/CoachBrowser";
 
+export const dynamic = "force-dynamic";
+
+const pill = (active: boolean) =>
+  `shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold ${active ? "border-ink bg-ink text-white" : "border-line bg-surface"}`;
+
+/**
+ * Activities = a coach directory. By default every coach who has published an activity; pick an activity
+ * (Karate, Chess...) to see only the coaches who offer it. Who is listed comes from the database
+ * (published activities -> activity type), so a coach offering Karate and Taekwondo appears under both.
+ * Each coach's own courses/lessons are on their profile; the individual activity pages
+ * (/student/marketplace/<id>) are unchanged and reached from there.
+ *
+ * Old links keep working: /student/marketplace?category=martial (a whole category) lists the coaches who
+ * offer any activity in it, and ?category=karate (an activity) is redirected to ?activity=karate.
+ */
 export default async function MarketplacePage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }>;
+  searchParams: Promise<{ activity?: string | string[]; category?: string | string[]; q?: string | string[] }>;
 }) {
-  const { category: categoryParam } = await searchParams;
-  const category = ACTIVITY_CATEGORIES.some((c) => c.id === categoryParam)
-    ? (categoryParam as ActivityCategoryId)
-    : undefined;
-  const supabase = await createClient();
+  const sp = await searchParams;
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const query = normalizeSearch(first(sp.q));
+  const activityParam = first(sp.activity);
+  const categoryParam = first(sp.category);
 
-  let query = supabase
-    .from("activities")
-    .select("*, profiles(full_name)")
-    .eq("status", "published");
-  if (category) query = query.eq("category", category);
-
-  const [{ data: activities }, paymentsOn] = await Promise.all([
-    query.order("created_at", { ascending: false }),
-    arePaymentsEnabled(),
-  ]);
-
-  // Live activities show an UPCOMING / LIVE / ENDED badge; regular ones look as before.
-  const liveByActivity = await getLiveSummaries("activity", (activities ?? []).map((a) => a.id));
+  const selected = findActivity(activityParam);
+  let category = null as ReturnType<typeof findCategory>;
+  if (!selected && categoryParam !== undefined) {
+    const asActivity = findActivity(categoryParam);
+    if (asActivity) {
+      // An old link that named an activity: send it to the activity's own filter.
+      redirect(`/student/marketplace?activity=${asActivity.id}${query ? `&q=${encodeURIComponent(query)}` : ""}`);
+    }
+    category = findCategory(categoryParam);
+    // A made-up category is dropped rather than silently kept in the address.
+    if (!category) redirect(query ? `/student/marketplace?q=${encodeURIComponent(query)}` : "/student/marketplace");
+  }
+  const session = await getSessionProfile();
+  const noFilter = !selected && !category;
+  const label = selected?.name ?? category?.name ?? null;
+  const basePath = selected
+    ? `/student/marketplace?activity=${selected.id}`
+    : category
+      ? `/student/marketplace?category=${category.id}`
+      : "/student/marketplace";
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       <div>
         <h1 className="font-head text-xl font-extrabold">Activities</h1>
         <p className="text-sm text-ink-soft">Sports, Martial Arts, Performing Arts &amp; Music, Creative Tech &amp; Mind Games.</p>
       </div>
 
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0" role="navigation" aria-label="Activity categories">
-        <Link
-          href="/student/marketplace"
-          className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold ${!category ? "border-ink bg-ink text-white" : "border-line bg-surface"}`}
-        >
-          All
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0" role="navigation" aria-label="Activities">
+        <Link href="/student/marketplace" aria-current={noFilter ? "page" : undefined} className={pill(noFilter)}>
+          All Coaches
         </Link>
-        {ACTIVITY_CATEGORIES.map((cat) => (
+        {listActivityChoices().map((a) => (
           <Link
-            key={cat.id}
-            href={`/student/marketplace?category=${cat.id}`}
-            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold ${category === cat.id ? "border-ink bg-ink text-white" : "border-line bg-surface"}`}
+            key={a.id}
+            href={`/student/marketplace?activity=${a.id}`}
+            aria-current={selected?.id === a.id ? "page" : undefined}
+            className={pill(selected?.id === a.id)}
           >
-            {cat.name}
+            {a.name}
           </Link>
         ))}
       </div>
 
-      {activities && activities.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {activities.map((activity) => {
-            const live = liveByActivity.get(activity.id);
-            return (
-            <Link key={activity.id} href={`/student/marketplace/${activity.id}`}>
-              <Card className="flex flex-col gap-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="break-words font-semibold">{activity.title}</p>
-                    <p className="break-words text-xs text-ink-faint">
-                      by {(activity as unknown as { profiles: { full_name: string } | null }).profiles?.full_name ?? "Teacher"}
-                    </p>
-                  </div>
-                  <span className="shrink-0">
-                    <Badge tone="info">{activity.category}</Badge>
-                  </span>
-                </div>
-                {activity.description && (
-                  <p className="line-clamp-2 break-words text-sm text-ink-soft">{activity.description}</p>
-                )}
-                {live && (
-                  <div className="flex items-center gap-2">
-                    <LiveBadge status={effectiveLiveStatus(live)} />
-                    <span className="text-xs text-ink-faint">Live class · {formatSchedule(live.scheduled_at)}</span>
-                  </div>
-                )}
-                <p className="font-head text-sm font-bold">
-                  {paymentsOn && activity.price > 0 ? formatKes(activity.price) : "Free"}
-                  {paymentsOn && activity.price > 0 && (
-                    <span className="text-xs font-normal text-ink-faint">{BILLING_LABELS[activity.billing]}</span>
-                  )}
-                </p>
-              </Card>
-            </Link>
-            );
-          })}
-        </div>
-      ) : (
-        <EmptyState
-          title="No activities published yet"
-          description="Teachers haven't listed any activities in this category yet."
+      <section aria-labelledby="activity-coaches-heading" className="flex min-w-0 flex-col gap-3">
+        <h2 id="activity-coaches-heading" className="font-head text-lg font-extrabold">
+          {label ? `Coaches offering ${label}` : "All Coaches"}
+        </h2>
+        <CoachBrowser
+          studentId={session!.user.id}
+          query={query}
+          pageSize={12}
+          basePath={basePath}
+          scope={{ offer: "activities", activityId: selected?.id, categoryId: category?.id }}
+          emptyTitle={label ? `No coaches offering ${label} yet.` : "No coaches available yet."}
+          emptyDescription={
+            label
+              ? "Coaches will appear here as soon as they publish this activity."
+              : "Approved coaches will appear here as soon as they publish an activity."
+          }
         />
-      )}
+      </section>
     </div>
   );
 }
