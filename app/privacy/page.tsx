@@ -84,8 +84,7 @@ export default function PrivacyPolicyPage() {
           payment with your PIN on your own phone; we never see it. For a payment for an activity, the phone number you
           enter goes to Safaricom and we do not keep it. We keep a record of each payment: who paid and who was paid, the
           amount and currency, the status, the M-Pesa receipt number, the reference numbers Safaricom gives us for that
-          payment, and how the amount was shared between the teacher and the platform. For a coach activation fee we also
-          keep the phone number used and Safaricom’s result message.
+          payment, and how the amount was shared between the teacher and the platform.
         </li>
       </UL>
       <P><strong>Emails we send you</strong></P>
