@@ -101,3 +101,31 @@ export async function sendMessage(input: {
     return fail(UNEXPECTED);
   }
 }
+
+/** Changes the text of a message the signed-in person sent. Anyone else's message is refused by the database. */
+export async function editMessage(input: { messageId: string; body: string }): Promise<service.Result<{ edited: boolean }>> {
+  try {
+    const caller = await loadCaller(["student", "teacher"]);
+    if (!caller.ok) return caller;
+    const result = await service.editMessage(caller.admin, caller.userId, input);
+    if (result.ok) revalidatePath(`/${caller.role}/messages`, "layout");
+    return result;
+  } catch (err) {
+    console.error("[messages] edit failed:", err);
+    return fail(UNEXPECTED);
+  }
+}
+
+/** Deletes a message the signed-in person sent: its text and PDF are erased and both people see "This message was deleted". */
+export async function deleteMessage(messageId: string): Promise<service.Result> {
+  try {
+    const caller = await loadCaller(["student", "teacher"]);
+    if (!caller.ok) return caller;
+    const result = await service.deleteMessage(caller.admin, caller.userId, messageId);
+    if (result.ok) refresh();
+    return result;
+  } catch (err) {
+    console.error("[messages] delete failed:", err);
+    return fail(UNEXPECTED);
+  }
+}
