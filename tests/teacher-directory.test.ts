@@ -353,9 +353,9 @@ describe("browsing in pages", () => {
 });
 
 describe("what a student can see about a coach (privacy)", () => {
-  test("only name, picture, role, specialty, bio and their shared activities — nothing private", async () => {
+  test("only name, picture, role, specialty, bio and their shared activities and subjects — nothing private", async () => {
     const [t] = (await list(ID.S1, "david")).teachers;
-    assert.deepEqual(Object.keys(t).sort(), ["activities", "avatarSrc", "bio", "canMessage", "conversationId", "id", "name", "role", "sortName", "specialty"]);
+    assert.deepEqual(Object.keys(t).sort(), ["activities", "avatarSrc", "bio", "canMessage", "conversationId", "id", "name", "role", "sortName", "specialty", "subjects"]);
     assert.equal(t.specialty, "Football");
     assert.equal(t.bio, "Plays and coaches football.");
     assert.deepEqual(t.activities.map((a) => a.title), ["Football club"]);
@@ -369,7 +369,7 @@ describe("what a student can see about a coach (privacy)", () => {
   test("the database function itself returns no private columns", async () => {
     const r = await fake.admin.rpc("student_directory", { p_student: ID.S1, p_terms: ["david"], p_limit: 5, p_after_name: null, p_after_id: null, p_teacher: null });
     const columns = Object.keys((r.data as Record<string, unknown>[])[0]).sort();
-    assert.deepEqual(columns, ["activities", "avatar_url", "bio", "can_message", "conversation_id", "full_name", "kind", "sort_name", "specialty", "teacher_id"]);
+    assert.deepEqual(columns, ["activities", "avatar_url", "bio", "can_message", "conversation_id", "full_name", "kind", "sort_name", "specialty", "subjects", "teacher_id"]);
   });
 });
 

@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountStatus } from "@/lib/messaging-gate";
 import { listDirectory } from "@/lib/directory/service";
+import type { DirectoryScope } from "@/lib/directory/rules";
 import { DirectorySearch } from "@/components/directory/DirectorySearch";
 import { DirectoryList } from "@/components/directory/DirectoryList";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
@@ -18,28 +19,38 @@ export async function CoachBrowser({
   query,
   pageSize,
   basePath,
+  scope,
+  placeholder,
+  emptyTitle,
+  emptyDescription,
 }: {
   studentId: string;
   query: string;
   pageSize: number;
   basePath: string;
+  /** Narrow the list to who offers what (all teachers, all coaches, one subject, one activity). */
+  scope?: DirectoryScope;
+  placeholder?: string;
+  /** What to say when nobody matches the scope (and there is no search text). */
+  emptyTitle?: string;
+  emptyDescription?: string;
 }) {
   const admin = createAdminClient();
   const [directory, account] = await Promise.all([
-    listDirectory(admin, studentId, { query, pageSize, supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL }),
+    listDirectory(admin, studentId, { query, pageSize, scope, supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL }),
     getAccountStatus(await createClient(), studentId, admin),
   ]);
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <DirectorySearch initialQuery={query} />
+      <DirectorySearch initialQuery={query} placeholder={placeholder} />
       {!directory.ok ? (
         <ErrorBanner message={directory.message} />
       ) : directory.teachers.length === 0 ? (
         query ? (
           <EmptyState
             title="No teachers or coaches found."
-            description="Check the spelling, or try just a first or last name."
+            description="Check the spelling, or try a name, subject or activity."
             action={
               <LinkButton href={basePath} variant="outline">
                 Clear search
@@ -48,15 +59,18 @@ export async function CoachBrowser({
           />
         ) : (
           <EmptyState
-            title="No teachers or coaches available yet."
-            description="Approved teachers and coaches will appear here as soon as they publish an activity."
-            action={<LinkButton href="/student/marketplace">Browse activities</LinkButton>}
+            title={emptyTitle ?? "No teachers or coaches available yet."}
+            description={
+              emptyDescription ?? "Approved teachers and coaches will appear here as soon as they publish an activity."
+            }
+            action={scope ? undefined : <LinkButton href="/student/marketplace">Browse activities</LinkButton>}
           />
         )
       ) : (
         <DirectoryList
-          key={query}
+          key={`${query}|${scope?.offer ?? ""}|${scope?.subjectId ?? ""}|${scope?.activityId ?? ""}|${scope?.categoryId ?? ""}`}
           query={query}
+          scope={scope}
           initial={directory.teachers}
           initialCursor={directory.nextCursor}
           messagingState={account.messaging}

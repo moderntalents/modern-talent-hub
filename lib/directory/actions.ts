@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AGE_GATE_MESSAGE, isAgeCleared } from "@/lib/age-gate";
+import { parseScope } from "@/lib/directory/rules";
 import { DIRECTORY_UNAVAILABLE, listDirectory, type DirectoryPage } from "@/lib/directory/service";
 
 // "Load more" in the teacher/coach directory. Like the messaging actions, it works out WHO is asking
@@ -10,7 +11,7 @@ import { DIRECTORY_UNAVAILABLE, listDirectory, type DirectoryPage } from "@/lib/
 // students in; the rule about which teachers they may see is applied again inside the database.
 // Failures come back as { ok: false, message } because production hides thrown server-action errors.
 
-export async function loadMoreTeachers(input: { query: string; cursor: string; pageSize?: number }): Promise<DirectoryPage> {
+export async function loadMoreTeachers(input: { query: string; cursor: string; pageSize?: number; scope?: unknown }): Promise<DirectoryPage> {
   try {
     const supabase = await createClient();
     const {
@@ -25,6 +26,7 @@ export async function loadMoreTeachers(input: { query: string; cursor: string; p
     return await listDirectory(createAdminClient(), user.id, {
       query: input?.query,
       cursor: input?.cursor,
+      scope: parseScope(input?.scope),
       pageSize: typeof input?.pageSize === "number" ? input.pageSize : undefined,
       supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     });

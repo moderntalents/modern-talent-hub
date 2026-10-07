@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { LinkButton } from "@/components/ui/Button";
 import { MessageAction } from "@/components/directory/MessageAction";
-import { CARD_ACTIVITY_LIMIT, subtitleOf, type DirectoryTeacher } from "@/lib/directory/rules";
+import { CARD_ACTIVITY_LIMIT, CARD_SUBJECT_LIMIT, subtitleOf, type DirectoryOffer, type DirectoryTeacher } from "@/lib/directory/rules";
 import type { MessagingState } from "@/lib/messaging-permission";
 
 /**
@@ -10,8 +10,19 @@ import type { MessagingState } from "@/lib/messaging-permission";
  * the two actions. Built to sit two to a row on a phone and three on a desktop, so the face is the
  * first thing a student sees. Nothing private is ever on a card (see lib/directory/service.ts).
  */
-export function TeacherCard({ teacher, messagingState }: { teacher: DirectoryTeacher; messagingState: MessagingState }) {
-  const profileHref = `/student/teachers/${teacher.id}`;
+export function TeacherCard({
+  teacher,
+  messagingState,
+  from,
+}: {
+  teacher: DirectoryTeacher;
+  messagingState: MessagingState;
+  /** Which discovery page the student came from, so the profile's back link returns there. */
+  from?: DirectoryOffer;
+}) {
+  const profileHref = `/student/teachers/${teacher.id}${from ? `?from=${from}` : ""}`;
+  const subjectNames = teacher.subjects.slice(0, CARD_SUBJECT_LIMIT).map((s) => s.name);
+  const moreSubjects = teacher.subjects.length - subjectNames.length;
   const shown = teacher.activities.slice(0, CARD_ACTIVITY_LIMIT).map((a) => a.title);
   const more = teacher.activities.length - shown.length;
   return (
@@ -23,6 +34,12 @@ export function TeacherCard({ teacher, messagingState }: { teacher: DirectoryTea
         <div className="min-w-0 max-w-full flex-1">
           <h3 className="font-head text-sm font-bold leading-tight break-words sm:text-base">{teacher.name}</h3>
           <p className="mt-0.5 text-xs font-medium text-ink-soft break-words sm:text-sm">{subtitleOf(teacher)}</p>
+          {subjectNames.length > 0 && (
+            <p className="mt-1 line-clamp-2 text-xs text-ink-faint break-words">
+              {subjectNames.join(", ")}
+              {moreSubjects > 0 ? ` +${moreSubjects} more` : ""}
+            </p>
+          )}
           {shown.length > 0 && (
             <p className="mt-1 line-clamp-2 text-xs text-ink-faint break-words">
               {shown.join(", ")}

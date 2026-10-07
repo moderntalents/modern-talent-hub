@@ -2,9 +2,9 @@
 //
 // `studentId` must come from the signed-in session on the server (see lib/directory/actions.ts and
 // the pages), never from the browser. WHO is listed is decided entirely by the database function
-// student_directory() (migration 0021): approved teachers who finished account setup and have something
-// published, for a student who finished account setup, on every call; this file only tidies the input
-// and shapes the rows. Like the messaging service it takes the service-role client as a parameter so
+// student_directory() (migrations 0021 and 0023): approved teachers who finished account setup and have
+// something published, for a student who finished account setup, on every call; this file only tidies the
+// input and shapes the rows. Like the messaging service it takes the service-role client as a parameter so
 // the tests can run the same code against a real Postgres.
 
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -15,7 +15,10 @@ import {
   decodeCursor,
   encodeCursor,
   parseSearch,
+  parseScope,
   roleLabel,
+  scopeToArgs,
+  type DirectoryScope,
   type DirectoryTeacher,
 } from "@/lib/directory/rules";
 
@@ -30,6 +33,7 @@ type Row = {
   bio: string | null;
   kind: string | null;
   activities: { id: string; title: string }[] | null;
+  subjects?: { id: string; name: string }[] | null;
   conversation_id: string | null;
   can_message: boolean | null;
 };
@@ -44,6 +48,7 @@ function toTeacher(row: Row, supabaseUrl: string | undefined): DirectoryTeacher 
     specialty: row.specialty?.trim() || null,
     bio: row.bio?.trim() || null,
     activities: Array.isArray(row.activities) ? row.activities : [],
+    subjects: Array.isArray(row.subjects) ? row.subjects : [],
     conversationId: row.conversation_id,
     canMessage: row.can_message === true,
   };
@@ -56,16 +61,19 @@ export type DirectoryPage =
 export const DIRECTORY_UNAVAILABLE = "We couldn't load your teachers and coaches right now. Please try again.";
 
 /**
- * One page of the teachers/coaches students may find, optionally narrowed by a name search,
- * in name order. `cursor` is the `nextCursor` of the previous page. Never returns more than
+ * One page of the teachers/coaches students may find, optionally narrowed by a search (name, subject,
+ * activity or specialty) and by what they offer (`scope`: all teachers, all coaches, one subject, one
+ * activity), in name order. `cursor` is the `nextCursor` of the previous page. Never returns more than
  * `pageSize` people, so the browser is never handed the whole list.
  */
 export async function listDirectory(
   admin: Admin,
   studentId: string,
-  options: { query?: unknown; cursor?: unknown; pageSize?: number; supabaseUrl?: string } = {},
+  options: { query?: unknown; cursor?: unknown; pageSize?: number; scope?: DirectoryScope; supabaseUrl?: string } = {},
 ): Promise<DirectoryPage> {
   if (!isUuid(studentId)) return { ok: true, teachers: [], nextCursor: null };
+  const args = scopeToArgs(parseScope(options.scope));
+  if (args.nobody) return { ok: true, teachers: [], nextCursor: null };
   const pageSize = Math.min(Math.max(Math.floor(options.pageSize ?? DIRECTORY_PAGE_SIZE), 1), 50);
   const after = options.cursor ? decodeCursor(options.cursor) : null;
   // A cursor that isn't one of ours restarts from the top rather than failing.
@@ -77,6 +85,9 @@ export async function listDirectory(
     p_after_name: after?.name ?? null,
     p_after_id: after?.id ?? null,
     p_teacher: null,
+    p_offer: args.offer,
+    p_subject: args.subject,
+    p_activities: args.activities,
   });
   if (error) {
     console.error("[directory] student_directory failed:", error.message);
@@ -112,6 +123,9 @@ export async function getDirectoryTeacher(
     p_after_name: null,
     p_after_id: null,
     p_teacher: teacherId,
+    p_offer: null,
+    p_subject: null,
+    p_activities: null,
   });
   if (error) {
     console.error("[directory] could not load a teacher profile:", error.message);

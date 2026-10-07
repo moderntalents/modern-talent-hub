@@ -881,7 +881,7 @@ export interface Database {
         Args: { p_student: string; p_teacher: string };
         Returns: string;
       };
-      // The approved teachers/coaches a student may discover (0021). Keyset-paged.
+      // The approved teachers/coaches a student may discover (0021), optionally by subject/activity (0023). Keyset-paged.
       student_directory: {
         Args: {
           p_student: string;
@@ -890,6 +890,9 @@ export interface Database {
           p_after_name?: string | null;
           p_after_id?: string | null;
           p_teacher?: string | null;
+          p_offer?: string | null;
+          p_subject?: string | null;
+          p_activities?: string[] | null;
         };
         Returns: {
           teacher_id: string;
@@ -902,6 +905,7 @@ export interface Database {
           activities: { id: string; title: string }[];
           conversation_id: string | null;
           can_message: boolean | null;
+          subjects: { id: string; name: string }[];
         }[];
       };
       // Adult, approved students with an active subscription to this approved teacher's activities: the
