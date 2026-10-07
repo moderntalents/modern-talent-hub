@@ -901,6 +901,41 @@ export interface Database {
         Args: { p_teacher: string; p_student: string };
         Returns: string;
       };
+      // Server-only, from 0020_profile_pictures.sql. Failures are raised as "avatar:<reason>".
+      set_profile_avatar: {
+        Args: { p_user: string; p_path: string };
+        Returns: string | null; // the picture it replaced
+      };
+      clear_profile_avatar: {
+        Args: { p_user: string };
+        Returns: string | null; // the picture it removed
+      };
+      // Server-only, from 0019_student_teacher_directory.sql.
+      start_conversation_as_student: {
+        Args: { p_student: string; p_teacher: string };
+        Returns: string;
+      };
+      // The teachers/coaches one student may find: active subscription only. Keyset-paged.
+      student_directory: {
+        Args: {
+          p_student: string;
+          p_terms?: string[];
+          p_limit?: number;
+          p_after_name?: string | null;
+          p_after_id?: string | null;
+          p_teacher?: string | null;
+        };
+        Returns: {
+          teacher_id: string;
+          sort_name: string;
+          full_name: string;
+          avatar_url: string | null;
+          specialty: string | null;
+          bio: string | null;
+          activities: { id: string; title: string }[];
+          conversation_id: string | null;
+        }[];
+      };
       // Adult, approved students with an active subscription to this approved teacher's activities: the
       // only students the teacher may start a conversation with. Ids only, never ages.
       messaging_teacher_startable_students: {

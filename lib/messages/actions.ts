@@ -53,6 +53,20 @@ export async function startConversationFromActivity(activityId: string): Promise
   }
 }
 
+/** Student, from the teacher/coach directory: a teacher they have an active subscription with. */
+export async function startConversationAsStudent(teacherId: string): Promise<service.Result<{ conversationId: string }>> {
+  try {
+    const caller = await loadCaller(["student"]);
+    if (!caller.ok) return caller;
+    const result = await service.startAsStudent(caller.admin, caller.userId, teacherId);
+    if (result.ok) refresh();
+    return result;
+  } catch (err) {
+    console.error("[messages] start as student failed:", err);
+    return fail(UNEXPECTED);
+  }
+}
+
 /** Teacher, with one of their own active subscribers. */
 export async function startConversationAsTeacher(studentId: string): Promise<service.Result<{ conversationId: string }>> {
   try {
