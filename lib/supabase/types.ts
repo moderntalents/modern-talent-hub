@@ -788,6 +788,9 @@ export interface Database {
           attachment_name: string | null;
           attachment_size: number | null;
           created_at: string;
+          // Set by edit_message / delete_message (0018_message_edit_delete.sql).
+          edited_at: string | null;
+          deleted_at: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["messages"]["Row"]> & {
           conversation_id: string;
@@ -931,6 +934,15 @@ export interface Database {
       delete_user_messages: {
         Args: { p_user: string };
         Returns: number;
+      };
+      // 0018_message_edit_delete.sql — only ever the sender's own message.
+      edit_message: {
+        Args: { p_user: string; p_message: string; p_body: string };
+        Returns: "edited" | "unchanged";
+      };
+      delete_message: {
+        Args: { p_user: string; p_message: string };
+        Returns: string | null;
       };
     };
   };
