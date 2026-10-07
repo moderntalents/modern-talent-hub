@@ -187,6 +187,8 @@ export function fakeAdmin(db: PGlite): AdminClient {
 import type { Admin } from "../../lib/messages/service";
 
 const SETOF = new Set(["messaging_conversation_ids"]);
+// Functions that return a table: supabase-js hands back an array of row objects.
+const ROWS = new Set(["student_directory"]);
 
 export interface FakeAdmin {
   admin: Admin;
@@ -221,6 +223,7 @@ export function makeFakeAdmin(db: PGlite, options: { rpcOverride?: (name: string
     const sql = `select * from ${name}(${keys.map((k, i) => `${k} => $${i + 1}`).join(", ")})`;
     try {
       const { rows } = await as(db, "service", () => db.query<Record<string, unknown>>(sql, keys.map((k) => args[k])));
+      if (ROWS.has(name)) return { data: rows, error: null };
       const values = rows.map((r) => Object.values(r)[0]);
       return { data: SETOF.has(name) ? values : (values[0] ?? null), error: null };
     } catch (err) {
