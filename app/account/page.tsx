@@ -13,6 +13,8 @@ import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { DeleteAccountPanel } from "./DeleteAccountPanel";
 import { ProfilePanel } from "./ProfilePanel";
+import { AvatarPanel } from "./AvatarPanel";
+import { avatarSrc } from "@/lib/directory/rules";
 
 export const metadata: Metadata = { title: "Settings — Modern Talent Hub" };
 
@@ -77,6 +79,13 @@ export default async function AccountPage() {
             </LinkButton>
           </div>
         </Card>
+      )}
+
+      {role === "teacher" && (
+        <AvatarPanel
+          name={profile.full_name}
+          currentSrc={avatarSrc(profile.avatar_url, user.id, process.env.NEXT_PUBLIC_SUPABASE_URL)}
+        />
       )}
 
       <ProfilePanel

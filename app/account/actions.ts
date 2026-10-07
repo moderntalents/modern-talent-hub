@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CONTACT_EMAIL } from "@/lib/legal";
 import { removeUserMessaging } from "@/lib/messages/service";
+import { removeUserAvatars } from "@/lib/avatars/service";
 
 // "Delete my account" — the in-app deletion path Google Play requires.
 //
@@ -207,6 +208,11 @@ export async function deleteMyAccount(confirmation: string): Promise<DeleteAccou
     // people. Needed on BOTH paths below — the scrub path keeps the profile row, so nothing would
     // cascade — and it throws if a file can't be removed, so the deletion can simply be retried.
     await removeUserMessaging(admin, user.id);
+
+    // A coach's profile picture is a public file: remove it on BOTH paths (the scrub path keeps the
+    // profile row, and clears avatar_url, but nothing would delete the file). Throws if a file can't
+    // be removed, so the deletion can simply be retried.
+    await removeUserAvatars(admin, user.id);
 
     if (keepRecords) {
       await scrubAccount(admin, user.id);
