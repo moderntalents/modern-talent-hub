@@ -33,6 +33,7 @@ export const LIMITS = {
   start: { max: 30, seconds: 3600 },
   upload: { max: 20, seconds: 3600 },
   send: { max: 30, seconds: 600 },
+  change: { max: 60, seconds: 600 }, // edits and deletes of your own messages
 } as const;
 
 const TOO_FAST = "You're going a bit fast. Please wait a few minutes and try again.";
@@ -205,6 +206,55 @@ export async function sendMessage(admin: Admin, userId: string, input: SendInput
     return fail(friendlyMessagingError(error?.message));
   }
   return { ok: true, messageId: data };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Editing and deleting your own messages
+// ---------------------------------------------------------------------------------------------
+// WHO owns a message is decided by the database (edit_message / delete_message in
+// supabase/migrations/0018_message_edit_delete.sql), which re-checks it on every call: a person
+// who isn't in the conversation is told the message doesn't exist, and one who is in it but didn't
+// write the message is refused. `userId` still always comes from the login, never from the browser.
+
+/** Replaces the text of a message the caller sent. `edited` is false when the text didn't change. */
+export async function editMessage(
+  admin: Admin,
+  userId: string,
+  input: { messageId: string; body: string },
+): Promise<Result<{ edited: boolean }>> {
+  if (!isUuid(input.messageId)) return fail(friendlyMessagingError("messaging:message_not_found"));
+  if (typeof input.body !== "string") return fail("Write a message.");
+  const bodyProblem = validateBody(input.body);
+  if (bodyProblem) return fail(bodyProblem);
+  if (!(await withinLimit(admin, "change", userId))) return fail(TOO_FAST);
+
+  const { data, error } = await admin.rpc("edit_message", {
+    p_user: userId,
+    p_message: input.messageId,
+    p_body: input.body,
+  });
+  if (error) return fail(friendlyMessagingError(error.message));
+  return { ok: true, edited: data === "edited" };
+}
+
+/**
+ * Erases a message the caller sent: the text is wiped and the PDF (if any) is detached by the
+ * database first, and only then removed from storage — so a failure to delete the file can never
+ * leave the message readable. A file that can't be removed right now is logged; nothing points at
+ * it any more, and it is cleaned up with the rest of the conversation's folder.
+ */
+export async function deleteMessage(admin: Admin, userId: string, messageId: string): Promise<Result> {
+  if (!isUuid(messageId)) return fail(friendlyMessagingError("messaging:message_not_found"));
+  if (!(await withinLimit(admin, "change", userId))) return fail(TOO_FAST);
+
+  const { data, error } = await admin.rpc("delete_message", { p_user: userId, p_message: messageId });
+  if (error) return fail(friendlyMessagingError(error.message));
+
+  if (typeof data === "string" && data) {
+    const { error: removeError } = await admin.storage.from(MESSAGE_BUCKET).remove([data]);
+    if (removeError) console.error("[messages] could not remove the file of a deleted message:", removeError.message);
+  }
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -18,7 +18,7 @@ export function ThreadScreen({ thread, role, backHref }: { thread: Thread; role:
         <p className="text-xs text-ink-faint">{role === "student" ? "Your teacher" : "Your student"}</p>
       </div>
 
-      <MessageThread messages={thread.messages} />
+      <MessageThread messages={thread.messages} canEdit={thread.readOnlyReason === null} />
 
       {thread.readOnlyReason ? (
         <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-soft">{thread.readOnlyReason}</p>

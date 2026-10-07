@@ -19,6 +19,9 @@ export function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
 }
 
+/** What both people see in place of a message that was deleted. */
+export const DELETED_MESSAGE_TEXT = "This message was deleted";
+
 /** null when the text is acceptable. Empty text is fine here: a message may be a file alone. */
 export function validateBody(body: string): string | null {
   if ([...body.trim()].length > MAX_BODY_CHARS) return `Messages can be at most ${MAX_BODY_CHARS} characters.`;
@@ -78,6 +81,10 @@ const FRIENDLY: Record<string, string> = {
   too_long: `Messages can be at most ${MAX_BODY_CHARS} characters.`,
   bad_request: "That message couldn't be sent.",
   bad_attachment: "That file couldn't be attached. Please choose the PDF again.",
+  message_not_found: "That message couldn't be found. It may have been deleted.",
+  not_yours: "You can only change messages you sent.",
+  message_deleted: "That message has already been deleted.",
+  edit_empty: "A message can't be empty. Write something, or delete the message instead.",
 };
 
 export function friendlyMessagingError(raw: string | null | undefined): string {

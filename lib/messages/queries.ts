@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isUuid, threadReadOnlyReason, type MessageKind } from "@/lib/messages/rules";
+import { DELETED_MESSAGE_TEXT, isUuid, threadReadOnlyReason, type MessageKind } from "@/lib/messages/rules";
 
 // What the messaging pages read. Conversations and messages are read AS THE SIGNED-IN PERSON, so
 // row-level security applies: someone only ever gets back conversations they are one of the two
@@ -30,7 +30,8 @@ export interface ConversationSummary {
   lastFromMe: boolean;
 }
 
-function previewOf(body: string, attachmentName: string | null): string {
+function previewOf(body: string, attachmentName: string | null, deleted = false): string {
+  if (deleted) return DELETED_MESSAGE_TEXT;
   const text = body.trim().replace(/\s+/g, " ");
   if (text) return text.length > 90 ? `${text.slice(0, 90)}…` : text;
   return attachmentName ? `📎 ${attachmentName}` : "";
@@ -48,7 +49,7 @@ export async function listConversations(myId: string, role: "student" | "teacher
 
   const { data: recent } = await supabase
     .from("messages")
-    .select("conversation_id, sender_id, kind, body, attachment_name, created_at")
+    .select("conversation_id, sender_id, kind, body, attachment_name, created_at, deleted_at")
     .in("conversation_id", conversations.map((c) => c.id))
     .order("created_at", { ascending: false })
     .limit(400);
@@ -71,8 +72,9 @@ export async function listConversations(myId: string, role: "student" | "teacher
       id: c.id,
       otherName: names.get(otherId(c)) ?? (role === "student" ? "Teacher" : "Student"),
       lastMessageAt: c.last_message_at,
-      preview: last ? previewOf(last.body, last.attachment_name) : "No messages yet",
-      lastKind: last?.kind ?? null,
+      preview: last ? previewOf(last.body, last.attachment_name, last.deleted_at !== null) : "No messages yet",
+      // A deleted message is shown as plain text, without its Homework / Submission label.
+      lastKind: last && last.deleted_at === null ? last.kind : null,
       lastFromMe: last?.sender_id === myId,
     };
   });
@@ -86,6 +88,10 @@ export interface ThreadMessage {
   attachmentName: string | null;
   attachmentSize: number | null;
   createdAt: string;
+  /** When the sender last changed the text, or null if never. */
+  editedAt: string | null;
+  /** True once the sender deleted it: the body and file are gone and only a placeholder is shown. */
+  deleted: boolean;
 }
 
 export interface Thread {
@@ -110,7 +116,7 @@ export async function getThread(conversationId: string, myId: string, role: "stu
 
   const { data: rows } = await supabase
     .from("messages")
-    .select("id, sender_id, kind, body, attachment_name, attachment_size, created_at")
+    .select("id, sender_id, kind, body, attachment_name, attachment_size, created_at, edited_at, deleted_at")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(200);
@@ -141,6 +147,8 @@ export async function getThread(conversationId: string, myId: string, role: "stu
         attachmentName: m.attachment_name,
         attachmentSize: m.attachment_size,
         createdAt: m.created_at,
+        editedAt: m.edited_at,
+        deleted: m.deleted_at !== null,
       })),
   };
 }
