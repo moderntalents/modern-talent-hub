@@ -127,22 +127,22 @@ language sql stable security definer set search_path = public as $$
       select 1
       from unnest((coalesce(p_terms, '{}'::text[]))[1:5]) as t(term)
       cross join lateral (
-        select '%' || replace(replace(replace(t.term, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' as pat
+        select '%' || replace(replace(replace(t.term, '\', '\\'), '%', '\%'), '_', '\_') || '%' as pat
       ) k
       where t.term <> ''
         and not (
-          p.full_name ilike k.pat escape '\\'
-          or coalesce(tp.specialty, '') ilike k.pat escape '\\'
+          p.full_name ilike k.pat escape '\'
+          or coalesce(tp.specialty, '') ilike k.pat escape '\'
           or exists (
             select 1
             from lessons l join subjects s on s.id = l.subject_id
-            where l.teacher_id = p.id and l.status = 'published' and s.name ilike k.pat escape '\\'
+            where l.teacher_id = p.id and l.status = 'published' and s.name ilike k.pat escape '\'
           )
           or exists (
             select 1
             from activities a
             where a.teacher_id = p.id and a.status = 'published'
-              and (a.title ilike k.pat escape '\\' or a.activity_type ilike k.pat escape '\\')
+              and (a.title ilike k.pat escape '\' or a.activity_type ilike k.pat escape '\')
           )
         )
     )
