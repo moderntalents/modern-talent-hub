@@ -28,12 +28,12 @@ export const MAX_TERM_CHARS = 40;
 export function parseSearch(raw: unknown): string[] {
   if (typeof raw !== "string") return [];
   const cleaned = raw
-    .replace(/[\\u0000-\\u001f\\u007f\\u200b\\u00a0]+/g, " ")
+    .replace(/[\u0000-\u001f\u007f​ ]+/g, " ")
     .slice(0, MAX_SEARCH_CHARS)
     .trim();
   if (!cleaned) return [];
   return cleaned
-    .split(/\\s+/)
+    .split(/\s+/)
     .filter(Boolean)
     .slice(0, MAX_SEARCH_TERMS)
     .map((word) => [...word].slice(0, MAX_TERM_CHARS).join(""));
@@ -174,8 +174,8 @@ export function roleLabel(kind?: string | null): "Coach" | "Teacher" {
 /** "David Pagni" → "DP"; "Madonna" → "M"; blank → "?". Letters only, so emoji and symbols are skipped. */
 export function initialsOf(name: string): string {
   const words = name
-    .split(/\\s+/)
-    .map((w) => [...w].find((ch) => /\\p{L}|\\p{N}/u.test(ch)) ?? "")
+    .split(/\s+/)
+    .map((w) => [...w].find((ch) => /\p{L}|\p{N}/u.test(ch)) ?? "")
     .filter(Boolean);
   if (words.length === 0) return "?";
   const first = words[0];
@@ -194,7 +194,7 @@ export function initialsOf(name: string): string {
  */
 export function avatarSrc(avatarUrl: string | null | undefined, teacherId: string, supabaseUrl: string | undefined): string | null {
   if (!avatarUrl || !supabaseUrl || !isUuid(teacherId)) return null;
-  const base = supabaseUrl.replace(/\\/+$/, "");
+  const base = supabaseUrl.replace(/\/+$/, "");
   const publicPrefix = `${base}/storage/v1/object/public/avatars/`;
   const raw = avatarUrl.trim();
   const path = raw.startsWith(publicPrefix) ? raw.slice(publicPrefix.length) : raw;
@@ -203,7 +203,7 @@ export function avatarSrc(avatarUrl: string | null | undefined, teacherId: strin
   if (folder.toLowerCase() !== teacherId.toLowerCase()) return null;
   if (!/^[A-Za-z0-9._-]{1,120}$/.test(file) || file.startsWith(".")) return null;
   // Keep a cache-busting query the app may have added when a picture is replaced.
-  const query = /\\?v=[A-Za-z0-9_-]{1,40}$/.exec(raw)?.[0] ?? "";
+  const query = /\?v=[A-Za-z0-9_-]{1,40}$/.exec(raw)?.[0] ?? "";
   return `${publicPrefix}${folder}/${file}${query}`;
 }
 
@@ -252,8 +252,8 @@ export function canOpenConversation(t: Pick<DirectoryTeacher, "conversationId" |
 
 /** The one line under a name: "Coach • Karate" — their role and specialty, or just the role. */
 export function subtitleOf(t: Pick<DirectoryTeacher, "role" | "specialty">): string {
-  const specialty = t.specialty?.trim().replace(/\\s+/g, " ");
+  const specialty = t.specialty?.trim().replace(/\s+/g, " ");
   if (!specialty) return t.role;
   // "Head football coach" already says it.
-  return /\\b(coach|teacher)\\b/i.test(specialty) ? specialty : `${t.role} • ${specialty}`;
+  return /\b(coach|teacher)\b/i.test(specialty) ? specialty : `${t.role} • ${specialty}`;
 }
