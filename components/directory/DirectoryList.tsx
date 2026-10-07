@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { TeacherCard } from "@/components/directory/TeacherCard";
 import { loadMoreTeachers } from "@/lib/directory/actions";
-import type { DirectoryTeacher } from "@/lib/directory/rules";
+import type { DirectoryScope, DirectoryTeacher } from "@/lib/directory/rules";
 import type { MessagingState } from "@/lib/messaging-permission";
 
 /**
@@ -15,12 +15,15 @@ import type { MessagingState } from "@/lib/messaging-permission";
  */
 export function DirectoryList({
   query,
+  scope,
   initial,
   initialCursor,
   messagingState,
   pageSize,
 }: {
   query: string;
+  /** Which subject/activity the list is narrowed to; sent back with "Show more". */
+  scope?: DirectoryScope;
   initial: DirectoryTeacher[];
   initialCursor: string | null;
   messagingState: MessagingState;
@@ -36,7 +39,7 @@ export function DirectoryList({
     if (!cursor) return;
     setError(null);
     startTransition(async () => {
-      const page = await loadMoreTeachers({ query, cursor, pageSize });
+      const page = await loadMoreTeachers({ query, cursor, pageSize, scope });
       if (!page.ok) {
         setError(page.message);
         return;
@@ -57,7 +60,7 @@ export function DirectoryList({
       </p>
       <ul className="grid grid-cols-1 gap-3 min-[340px]:grid-cols-2 lg:grid-cols-3" aria-label="Teachers and coaches">
         {teachers.map((t) => (
-          <TeacherCard key={t.id} teacher={t} messagingState={messagingState} />
+          <TeacherCard key={t.id} teacher={t} messagingState={messagingState} from={scope?.offer} />
         ))}
       </ul>
       {error && <ErrorBanner message={error} />}

@@ -12,7 +12,13 @@ const DEBOUNCE_MS = 300;
  * re-runs the search in the database — nothing is filtered in the browser. Works without JavaScript
  * too: it is a plain GET form, so Enter still searches.
  */
-export function DirectorySearch({ initialQuery }: { initialQuery: string }) {
+export function DirectorySearch({
+  initialQuery,
+  placeholder = "Search teachers or coaches...",
+}: {
+  initialQuery: string;
+  placeholder?: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -40,7 +46,12 @@ export function DirectorySearch({ initialQuery }: { initialQuery: string }) {
     if (q === lastPushed.current && q === urlQuery) return;
     lastPushed.current = q;
     startTransition(() => {
-      router.replace(q ? `${pathname}?q=${encodeURIComponent(q)}` : pathname, { scroll: false });
+      // Keep the page's other choices (the subject/activity picked) and change only the search text.
+      const next = new URLSearchParams(params.toString());
+      if (q) next.set("q", q);
+      else next.delete("q");
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     });
   }
 
@@ -62,8 +73,14 @@ export function DirectorySearch({ initialQuery }: { initialQuery: string }) {
       }}
     >
       <label htmlFor="teacher-search" className="sr-only">
-        Search teachers or coaches
+        {placeholder.replace(/\.+$/, "")}
       </label>
+      {/* Without JavaScript the form reloads the page, so carry the other choices along. */}
+      {[...params.entries()]
+        .filter(([key]) => key !== "q")
+        .map(([key, val]) => (
+          <input key={key} type="hidden" name={key} value={val} />
+        ))}
       <div className="relative">
         <svg
           aria-hidden="true"
@@ -90,7 +107,7 @@ export function DirectorySearch({ initialQuery }: { initialQuery: string }) {
           maxLength={MAX_SEARCH_CHARS}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Search teachers or coaches..."
+          placeholder={placeholder}
           className="min-h-12 w-full rounded-full border border-line bg-surface pl-10 pr-11 text-sm text-ink outline-none focus:border-brand-cyan-deep"
         />
         <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center">
