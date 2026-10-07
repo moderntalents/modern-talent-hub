@@ -8,6 +8,7 @@
 // file grants access.
 
 import { isUuid } from "@/lib/messages/rules";
+import { ACTIVITY_CATEGORIES } from "@/lib/constants";
 
 /** How many teachers one page shows. The server asks for one more, to know if there is a next page. */
 export const DIRECTORY_PAGE_SIZE = 12;
@@ -20,17 +21,19 @@ export const MAX_TERM_CHARS = 40;
 /**
  * What someone typed → the words to look for. Trims, collapses spaces, drops control characters,
  * and caps the size, so " David   PAGNI " becomes ["David", "PAGNI"]. Capitalisation is left alone
- * because the database matches without regard to it. An empty list means "no search".
+ * because the database matches without regard to it. An empty list means "no search". The database
+ * (migration 0023) requires EVERY word to match something the student can already see about the person:
+ * name, specialty, a subject they teach or an activity they offer — partial words are fine.
  */
 export function parseSearch(raw: unknown): string[] {
   if (typeof raw !== "string") return [];
   const cleaned = raw
-    .replace(/[\u0000-\u001f\u007f​ ]+/g, " ")
+    .replace(/[\\u0000-\\u001f\\u007f\\u200b\\u00a0]+/g, " ")
     .slice(0, MAX_SEARCH_CHARS)
     .trim();
   if (!cleaned) return [];
   return cleaned
-    .split(/\s+/)
+    .split(/\\s+/)
     .filter(Boolean)
     .slice(0, MAX_SEARCH_TERMS)
     .map((word) => [...word].slice(0, MAX_TERM_CHARS).join(""));
@@ -39,6 +42,91 @@ export function parseSearch(raw: unknown): string[] {
 /** The search text as it should sit in the address bar / search box: tidy, or "" for none. */
 export function normalizeSearch(raw: unknown): string {
   return parseSearch(raw).join(" ");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Narrowing the list by what people offer (Subjects / Activities pages; migration 0023)
+// ---------------------------------------------------------------------------------------------
+
+/** "subjects" = the All Teachers list (people with published lessons); "activities" = All Coaches. */
+export type DirectoryOffer = "subjects" | "activities";
+
+/** What the list is narrowed to. All parts are optional; none = the whole directory. */
+export interface DirectoryScope {
+  offer?: DirectoryOffer;
+  /** A subjects.id: only people with a published lesson in it. */
+  subjectId?: string;
+  /** An activity id or name from the catalog (e.g. "karate" / "Karate"): only people with that activity published. */
+  activityId?: string;
+  /**
+   * A catalog category id ("martial", "sports"...): people with a published activity in ANY of its activities.
+   * Old Activities links looked like /student/marketplace?category=martial; they land here. Ignored when an
+   * activityId is also given.
+   */
+  categoryId?: string;
+}
+
+/** The catalog activity (Karate, Chess...) for an id or name in any capitalisation, or null. */
+export function findActivity(raw: unknown): { id: string; name: string } | null {
+  if (typeof raw !== "string") return null;
+  const key = raw.trim().toLowerCase();
+  if (!key) return null;
+  for (const category of ACTIVITY_CATEGORIES) {
+    for (const a of category.activities) {
+      if (a.id.toLowerCase() === key || a.name.toLowerCase() === key) return { id: a.id, name: a.name };
+    }
+  }
+  return null;
+}
+
+/** The catalog category (Martial Arts...) for an id or name in any capitalisation, or null. */
+export function findCategory(raw: unknown): { id: string; name: string } | null {
+  if (typeof raw !== "string") return null;
+  const key = raw.trim().toLowerCase();
+  if (!key) return null;
+  const c = ACTIVITY_CATEGORIES.find((x) => x.id.toLowerCase() === key || x.name.toLowerCase() === key);
+  return c ? { id: c.id, name: c.name } : null;
+}
+
+/** Every catalog activity, in catalog order — what the Activities pills are made from. */
+export function listActivityChoices(): { id: string; name: string }[] {
+  return ACTIVITY_CATEGORIES.flatMap((c) => c.activities.map((a) => ({ id: a.id, name: a.name })));
+}
+
+/**
+ * Anything the browser sent → a scope we trust the SHAPE of (the database still decides who is
+ * visible). Unknown values are dropped, so a made-up filter can only narrow or empty the list.
+ */
+export function parseScope(raw: unknown): DirectoryScope {
+  if (!raw || typeof raw !== "object") return {};
+  const r = raw as Record<string, unknown>;
+  const scope: DirectoryScope = {};
+  if (r.offer === "subjects" || r.offer === "activities") scope.offer = r.offer;
+  if (typeof r.subjectId === "string" && isUuid(r.subjectId)) scope.subjectId = r.subjectId.toLowerCase();
+  if (typeof r.activityId === "string" && r.activityId.trim()) scope.activityId = r.activityId.trim().slice(0, 60);
+  if (typeof r.categoryId === "string" && r.categoryId.trim()) scope.categoryId = r.categoryId.trim().slice(0, 60);
+  return scope;
+}
+
+/**
+ * The scope → the database arguments. An activity that isn't in the catalog can't match anyone, so
+ * it is an explicit "nobody" rather than quietly turning into "everybody".
+ */
+export function scopeToArgs(
+  scope: DirectoryScope,
+): { nobody: true } | { nobody: false; offer: DirectoryOffer | null; subject: string | null; activities: string[] | null } {
+  let activities: string[] | null = null;
+  if (scope.activityId) {
+    const activity = findActivity(scope.activityId);
+    if (!activity) return { nobody: true };
+    // activities.activity_type holds the display name ("Karate"); older rows may hold the id.
+    activities = [activity.name, activity.id];
+  } else if (scope.categoryId) {
+    const category = ACTIVITY_CATEGORIES.find((c) => c.id === findCategory(scope.categoryId)?.id);
+    if (!category) return { nobody: true };
+    activities = category.activities.flatMap((a) => [a.name, a.id]);
+  }
+  return { nobody: false, offer: scope.offer ?? null, subject: scope.subjectId ?? null, activities };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -86,8 +174,8 @@ export function roleLabel(kind?: string | null): "Coach" | "Teacher" {
 /** "David Pagni" → "DP"; "Madonna" → "M"; blank → "?". Letters only, so emoji and symbols are skipped. */
 export function initialsOf(name: string): string {
   const words = name
-    .split(/\s+/)
-    .map((w) => [...w].find((ch) => /\p{L}|\p{N}/u.test(ch)) ?? "")
+    .split(/\\s+/)
+    .map((w) => [...w].find((ch) => /\\p{L}|\\p{N}/u.test(ch)) ?? "")
     .filter(Boolean);
   if (words.length === 0) return "?";
   const first = words[0];
@@ -106,7 +194,7 @@ export function initialsOf(name: string): string {
  */
 export function avatarSrc(avatarUrl: string | null | undefined, teacherId: string, supabaseUrl: string | undefined): string | null {
   if (!avatarUrl || !supabaseUrl || !isUuid(teacherId)) return null;
-  const base = supabaseUrl.replace(/\/+$/, "");
+  const base = supabaseUrl.replace(/\\/+$/, "");
   const publicPrefix = `${base}/storage/v1/object/public/avatars/`;
   const raw = avatarUrl.trim();
   const path = raw.startsWith(publicPrefix) ? raw.slice(publicPrefix.length) : raw;
@@ -115,7 +203,7 @@ export function avatarSrc(avatarUrl: string | null | undefined, teacherId: strin
   if (folder.toLowerCase() !== teacherId.toLowerCase()) return null;
   if (!/^[A-Za-z0-9._-]{1,120}$/.test(file) || file.startsWith(".")) return null;
   // Keep a cache-busting query the app may have added when a picture is replaced.
-  const query = /\?v=[A-Za-z0-9_-]{1,40}$/.exec(raw)?.[0] ?? "";
+  const query = /\\?v=[A-Za-z0-9_-]{1,40}$/.exec(raw)?.[0] ?? "";
   return `${publicPrefix}${folder}/${file}${query}`;
 }
 
@@ -126,6 +214,14 @@ export interface DirectoryActivity {
 
 /** How many of a teacher's activities a card names before saying "+ n more". */
 export const CARD_ACTIVITY_LIMIT = 2;
+
+export interface DirectorySubject {
+  id: string;
+  name: string;
+}
+
+/** How many subjects a card names before saying "+ n more". */
+export const CARD_SUBJECT_LIMIT = 2;
 
 export interface DirectoryTeacher {
   id: string;
@@ -138,6 +234,8 @@ export interface DirectoryTeacher {
   bio: string | null;
   /** Some of their published activities (the database returns at most 6, by title). */
   activities: DirectoryActivity[];
+  /** Some of the subjects they have published lessons in (the database returns at most 6, by name). */
+  subjects: DirectorySubject[];
   /** Set when a conversation already exists, so "Message" can open it directly. */
   conversationId: string | null;
   /**
@@ -154,8 +252,8 @@ export function canOpenConversation(t: Pick<DirectoryTeacher, "conversationId" |
 
 /** The one line under a name: "Coach • Karate" — their role and specialty, or just the role. */
 export function subtitleOf(t: Pick<DirectoryTeacher, "role" | "specialty">): string {
-  const specialty = t.specialty?.trim().replace(/\s+/g, " ");
+  const specialty = t.specialty?.trim().replace(/\\s+/g, " ");
   if (!specialty) return t.role;
   // "Head football coach" already says it.
-  return /\b(coach|teacher)\b/i.test(specialty) ? specialty : `${t.role} • ${specialty}`;
+  return /\\b(coach|teacher)\\b/i.test(specialty) ? specialty : `${t.role} • ${specialty}`;
 }
