@@ -7,6 +7,8 @@ const SIZES = {
   md: "h-12 w-12 text-base",
   lg: "h-16 w-16 text-xl",
   xl: "h-28 w-28 text-4xl",
+  /** Big enough to recognise a face at a glance on a phone, small enough for two cards side by side. */
+  card: "h-24 w-24 text-3xl sm:h-28 sm:w-28 sm:text-4xl",
 } as const;
 
 /**

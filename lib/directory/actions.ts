@@ -10,7 +10,7 @@ import { DIRECTORY_UNAVAILABLE, listDirectory, type DirectoryPage } from "@/lib/
 // students in; the rule about which teachers they may see is applied again inside the database.
 // Failures come back as { ok: false, message } because production hides thrown server-action errors.
 
-export async function loadMoreTeachers(input: { query: string; cursor: string }): Promise<DirectoryPage> {
+export async function loadMoreTeachers(input: { query: string; cursor: string; pageSize?: number }): Promise<DirectoryPage> {
   try {
     const supabase = await createClient();
     const {
@@ -25,6 +25,7 @@ export async function loadMoreTeachers(input: { query: string; cursor: string })
     return await listDirectory(createAdminClient(), user.id, {
       query: input?.query,
       cursor: input?.cursor,
+      pageSize: typeof input?.pageSize === "number" ? input.pageSize : undefined,
       supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     });
   } catch (err) {

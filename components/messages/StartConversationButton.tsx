@@ -23,12 +23,17 @@ export function StartConversationButton({
   basePath,
   variant = "primary",
   ariaLabel,
+  compact,
+  fullWidth,
 }: {
   target: Target;
   label: string;
   basePath: string;
   variant?: "primary" | "outline";
   ariaLabel?: string;
+  /** Narrower sides and full width, for a button that sits in a small card. */
+  compact?: boolean;
+  fullWidth?: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -49,8 +54,8 @@ export function StartConversationButton({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <Button type="button" variant={variant} loading={pending} onClick={open} aria-label={ariaLabel}>
+    <div className={`flex min-w-0 flex-col gap-2 ${fullWidth ? "w-full" : ""}`}>
+      <Button type="button" variant={variant} compact={compact} loading={pending} onClick={open} aria-label={ariaLabel} className={fullWidth ? "w-full" : ""}>
         {label}
       </Button>
       {error && <ErrorBanner message={error} />}
