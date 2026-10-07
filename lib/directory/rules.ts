@@ -25,7 +25,7 @@ export const MAX_TERM_CHARS = 40;
 export function parseSearch(raw: unknown): string[] {
   if (typeof raw !== "string") return [];
   const cleaned = raw
-    .replace(/[\\u0000-\\u001f\\u007f\\u200b\\u00a0]+/g, " ")
+    .replace(/[\u0000-\u001f\u007f​ ]+/g, " ")
     .slice(0, MAX_SEARCH_CHARS)
     .trim();
   if (!cleaned) return [];
