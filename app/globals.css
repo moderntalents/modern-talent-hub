@@ -124,6 +124,10 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body), sans-serif;
+  /* Safety net for phones: nothing may make the page itself wider than the screen. (Rows that are
+     meant to scroll sideways, like the activity tabs, scroll inside their own box.) "clip" rather than
+     "hidden" so sticky headers keep working. */
+  overflow-x: clip;
 }
 
 h1,
