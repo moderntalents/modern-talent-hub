@@ -35,15 +35,18 @@ export function LinkButton({
   href,
   variant = "primary",
   className = "",
+  ariaLabel,
   children,
 }: {
   href: string;
   variant?: Variant;
   className?: string;
+  /** Spoken name when the visible text alone isn't enough (e.g. "Message David Pagni"). */
+  ariaLabel?: string;
   children: React.ReactNode;
 }) {
   return (
-    <Link href={href} className={`${base} ${variantClasses[variant]} ${className}`}>
+    <Link href={href} aria-label={ariaLabel} className={`${base} ${variantClasses[variant]} ${className}`}>
       {children}
     </Link>
   );
