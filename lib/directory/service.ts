@@ -2,10 +2,10 @@
 //
 // `studentId` must come from the signed-in session on the server (see lib/directory/actions.ts and
 // the pages), never from the browser. WHO is listed is decided entirely by the database function
-// student_directory() (migration 0019), which applies the messaging relationship rule — an active
-// subscription — on every call; this file only tidies the input and shapes the rows. Like the
-// messaging service it takes the service-role client as a parameter so the tests can run the same
-// code against a real Postgres.
+// student_directory() (migration 0021): approved teachers who finished account setup and have something
+// published, for a student who finished account setup, on every call; this file only tidies the input
+// and shapes the rows. Like the messaging service it takes the service-role client as a parameter so
+// the tests can run the same code against a real Postgres.
 
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { isUuid } from "@/lib/messages/rules";
@@ -28,8 +28,10 @@ type Row = {
   avatar_url: string | null;
   specialty: string | null;
   bio: string | null;
+  kind: string | null;
   activities: { id: string; title: string }[] | null;
   conversation_id: string | null;
+  can_message: boolean | null;
 };
 
 function toTeacher(row: Row, supabaseUrl: string | undefined): DirectoryTeacher {
@@ -38,11 +40,12 @@ function toTeacher(row: Row, supabaseUrl: string | undefined): DirectoryTeacher 
     name: row.full_name,
     sortName: row.sort_name,
     avatarSrc: avatarSrc(row.avatar_url, row.teacher_id, supabaseUrl),
-    role: roleLabel(),
+    role: roleLabel(row.kind),
     specialty: row.specialty?.trim() || null,
     bio: row.bio?.trim() || null,
     activities: Array.isArray(row.activities) ? row.activities : [],
     conversationId: row.conversation_id,
+    canMessage: row.can_message === true,
   };
 }
 
@@ -53,7 +56,7 @@ export type DirectoryPage =
 export const DIRECTORY_UNAVAILABLE = "We couldn't load your teachers and coaches right now. Please try again.";
 
 /**
- * One page of the teachers/coaches this student may find, optionally narrowed by a name search,
+ * One page of the teachers/coaches students may find, optionally narrowed by a name search,
  * in name order. `cursor` is the `nextCursor` of the previous page. Never returns more than
  * `pageSize` people, so the browser is never handed the whole list.
  */
@@ -92,9 +95,8 @@ export async function listDirectory(
 
 /**
  * One teacher/coach, only if THIS student may find them (same rule as the list). Anyone else —
- * a teacher the student has no active subscription with, an unapproved teacher, a student, an id
- * that doesn't exist — gives the same answer: null. So a profile address can't be used to find out
- * who exists on the platform.
+ * an unapproved teacher, one with nothing published, a student, an id that doesn't exist — gives the
+ * same answer: null. So a profile address can't be used to find out who exists on the platform.
  */
 export async function getDirectoryTeacher(
   admin: Admin,
