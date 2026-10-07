@@ -3,8 +3,18 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { normalizeSearch } from "@/lib/directory/rules";
+import { CoachBrowser } from "@/components/directory/CoachBrowser";
 
-export default async function StudentHome() {
+export const dynamic = "force-dynamic";
+
+export default async function StudentHome({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string | string[] }>;
+}) {
+  const sp = await searchParams;
+  const query = normalizeSearch(Array.isArray(sp.q) ? sp.q[0] : sp.q);
   const session = await getSessionProfile();
   const supabase = await createClient();
 
@@ -19,7 +29,7 @@ export default async function StudentHome() {
   ]);
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex min-w-0 flex-col gap-5">
       <div>
         <h1 className="font-head text-xl font-extrabold">
           Vizuri sana, {session!.profile.full_name.split(" ")[0]}! 👋
@@ -43,6 +53,21 @@ export default async function StudentHome() {
           </Card>
         </Link>
       </div>
+
+      <section aria-labelledby="find-coach-heading" className="flex min-w-0 flex-col gap-3">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id="find-coach-heading" className="font-head text-lg font-extrabold">
+              Find Your Teacher or Coach
+            </h2>
+            <p className="text-sm text-ink-soft">Meet the people who teach on Modern Talent Hub.</p>
+          </div>
+          <Link href="/student/teachers" className="shrink-0 text-sm font-semibold text-brand-cyan-deep">
+            See all
+          </Link>
+        </div>
+        <CoachBrowser studentId={session!.user.id} query={query} pageSize={6} basePath="/student" />
+      </section>
 
       <div>
         <h2 className="mb-2 font-head text-sm font-bold uppercase tracking-wide text-ink-faint">

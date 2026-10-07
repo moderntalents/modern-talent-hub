@@ -3,8 +3,9 @@
 // Pure functions and constants (the only import is another pure module), so the same code runs in the
 // browser (to tidy what someone types), on the server (which is what actually enforces things) and in
 // the tests.
-// WHO a student may find is decided by the database (supabase/migrations/0019_student_teacher_directory.sql,
-// which reuses the messaging relationship rule from 0011) — nothing in this file grants access.
+// WHO a student may find is decided by the database (supabase/migrations/0021_discoverable_coaches.sql,
+// which replaced the 0019 rule; messaging still follows the 0011 relationship rule) — nothing in this
+// file grants access.
 
 import { isUuid } from "@/lib/messages/rules";
 
@@ -73,13 +74,13 @@ export function decodeCursor(raw: unknown): DirectoryCursor | null {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * "Teacher" or "Coach". Every person in the directory is connected to the student through an
- * activity (sports, martial arts, music, creative) — the app calls those teachers "coaches" everywhere
- * ("Message coach") — so that is the label. Kept in one place so a future relationship type (say, a
- * school subject) can say "Teacher" without touching the screens.
+ * "Coach" or "Teacher". Someone with a published activity (sports, martial arts, music, creative) is a
+ * coach — the app calls those teachers "coaches" everywhere ("Message coach"). Someone who only has
+ * published lessons is a teacher. The database says which (student_directory().kind); anything it
+ * doesn't recognise is shown as "Coach", the app's usual word. Kept in one place so the screens never decide.
  */
-export function roleLabel(): "Coach" | "Teacher" {
-  return "Coach";
+export function roleLabel(kind?: string | null): "Coach" | "Teacher" {
+  return kind === "Teacher" ? "Teacher" : "Coach";
 }
 
 /** "David Pagni" → "DP"; "Madonna" → "M"; blank → "?". Letters only, so emoji and symbols are skipped. */
@@ -123,6 +124,9 @@ export interface DirectoryActivity {
   title: string;
 }
 
+/** How many of a teacher's activities a card names before saying "+ n more". */
+export const CARD_ACTIVITY_LIMIT = 2;
+
 export interface DirectoryTeacher {
   id: string;
   name: string;
@@ -132,15 +136,26 @@ export interface DirectoryTeacher {
   role: "Coach" | "Teacher";
   specialty: string | null;
   bio: string | null;
-  /** The activities the student is enrolled in with this person. */
+  /** Some of their published activities (the database returns at most 6, by title). */
   activities: DirectoryActivity[];
   /** Set when a conversation already exists, so "Message" can open it directly. */
   conversationId: string | null;
+  /**
+   * Whether this student may start messaging them today (an active subscription — the messaging rule).
+   * A hint for the buttons only: starting a conversation is checked again by the database.
+   */
+  canMessage: boolean;
 }
 
-/** The one line under a name: "Football Coach" — their specialty and role, or just the role. */
+/** Can the Message button do anything? Yes if a conversation exists to open, or one may be started. */
+export function canOpenConversation(t: Pick<DirectoryTeacher, "conversationId" | "canMessage">): boolean {
+  return t.conversationId !== null || t.canMessage;
+}
+
+/** The one line under a name: "Coach • Karate" — their role and specialty, or just the role. */
 export function subtitleOf(t: Pick<DirectoryTeacher, "role" | "specialty">): string {
-  const specialty = t.specialty?.trim();
-  if (specialty) return /\b(coach|teacher)\b/i.test(specialty) ? specialty : `${specialty} ${t.role}`.replace(/\s+/g, " ");
-  return t.role;
+  const specialty = t.specialty?.trim().replace(/\s+/g, " ");
+  if (!specialty) return t.role;
+  // "Head football coach" already says it.
+  return /\b(coach|teacher)\b/i.test(specialty) ? specialty : `${t.role} • ${specialty}`;
 }

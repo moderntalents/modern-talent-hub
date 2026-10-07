@@ -10,17 +10,20 @@ const variantClasses: Record<Variant, string> = {
   ghost: "bg-transparent text-ink hover:bg-surface-2",
 };
 
-const base =
-  "inline-flex items-center justify-center gap-2 rounded-full px-5 min-h-11 text-sm font-semibold transition-colors disabled:opacity-50 disabled:pointer-events-none";
+const baseCommon =
+  "inline-flex items-center justify-center gap-2 rounded-full min-h-11 text-sm font-semibold transition-colors disabled:opacity-50 disabled:pointer-events-none";
+const base = `${baseCommon} px-5`;
+/** Narrower sides, for buttons that sit two to a row on a phone. */
+const baseCompact = `${baseCommon} px-3`;
 
 export const Button = forwardRef<
   HTMLButtonElement,
-  ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; loading?: boolean }
->(({ variant = "primary", loading, className = "", children, disabled, ...props }, ref) => (
+  ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; loading?: boolean; compact?: boolean }
+>(({ variant = "primary", loading, compact, className = "", children, disabled, ...props }, ref) => (
   <button
     ref={ref}
     disabled={disabled || loading}
-    className={`${base} ${variantClasses[variant]} ${className}`}
+    className={`${compact ? baseCompact : base} ${variantClasses[variant]} ${className}`}
     {...props}
   >
     {loading && (
@@ -35,18 +38,20 @@ export function LinkButton({
   href,
   variant = "primary",
   className = "",
+  compact,
   ariaLabel,
   children,
 }: {
   href: string;
   variant?: Variant;
+  compact?: boolean;
   className?: string;
   /** Spoken name when the visible text alone isn't enough (e.g. "Message David Pagni"). */
   ariaLabel?: string;
   children: React.ReactNode;
 }) {
   return (
-    <Link href={href} aria-label={ariaLabel} className={`${base} ${variantClasses[variant]} ${className}`}>
+    <Link href={href} aria-label={ariaLabel} className={`${compact ? baseCompact : base} ${variantClasses[variant]} ${className}`}>
       {children}
     </Link>
   );

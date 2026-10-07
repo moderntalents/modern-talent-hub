@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountStatus } from "@/lib/messaging-gate";
 import { getDirectoryTeacher } from "@/lib/directory/service";
-import { subtitleOf } from "@/lib/directory/rules";
+import { canOpenConversation, subtitleOf } from "@/lib/directory/rules";
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
 import { MessageAction } from "@/components/directory/MessageAction";
@@ -19,7 +19,7 @@ export default async function StudentTeacherProfilePage({ params }: { params: Pr
   const userId = session!.user.id;
   const admin = createAdminClient();
 
-  // Same rule as the list: only a teacher/coach this student has an active subscription with. Anyone
+  // Same rule as the list: only an approved teacher/coach with something published is visible. Anyone
   // else — no matter why — is "not found", so this address can't be used to look people up.
   const teacher = await getDirectoryTeacher(admin, userId, teacherId, {
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -27,6 +27,7 @@ export default async function StudentTeacherProfilePage({ params }: { params: Pr
   if (!teacher) notFound();
 
   const account = await getAccountStatus(await createClient(), userId, admin);
+  const first = teacher.name.split(/\s+/)[0];
 
   return (
     <div className="flex flex-col gap-4">
@@ -45,6 +46,14 @@ export default async function StudentTeacherProfilePage({ params }: { params: Pr
         </div>
       </Card>
 
+      {!canOpenConversation(teacher) && (
+        <p id="join" className="rounded-2xl bg-[var(--info-tint)] px-4 py-3 text-sm text-[var(--info-text)]">
+          {teacher.activities.length > 0
+            ? `You can message ${first} once you join one of their activities below.`
+            : `${first} doesn't have an activity you can join yet.`}
+        </p>
+      )}
+
       {teacher.bio && (
         <section aria-labelledby="about-heading">
           <h2 id="about-heading" className="mb-2 font-head text-sm font-bold uppercase tracking-wide text-ink-faint">
@@ -59,7 +68,7 @@ export default async function StudentTeacherProfilePage({ params }: { params: Pr
       {teacher.activities.length > 0 && (
         <section aria-labelledby="enrolled-heading">
           <h2 id="enrolled-heading" className="mb-2 font-head text-sm font-bold uppercase tracking-wide text-ink-faint">
-            Your activities with {teacher.name.split(/\s+/)[0]}
+            Activities by {first}
           </h2>
           <ul className="flex flex-col gap-2">
             {teacher.activities.map((a) => (

@@ -18,11 +18,14 @@ export function DirectoryList({
   initial,
   initialCursor,
   messagingState,
+  pageSize,
 }: {
   query: string;
   initial: DirectoryTeacher[];
   initialCursor: string | null;
   messagingState: MessagingState;
+  /** How many more each "Show more" brings; the server limits it too. */
+  pageSize?: number;
 }) {
   const [teachers, setTeachers] = useState(initial);
   const [cursor, setCursor] = useState(initialCursor);
@@ -33,7 +36,7 @@ export function DirectoryList({
     if (!cursor) return;
     setError(null);
     startTransition(async () => {
-      const page = await loadMoreTeachers({ query, cursor });
+      const page = await loadMoreTeachers({ query, cursor, pageSize });
       if (!page.ok) {
         setError(page.message);
         return;
@@ -52,7 +55,7 @@ export function DirectoryList({
       <p aria-live="polite" className="sr-only">
         {count} {count === 1 ? "teacher or coach" : "teachers and coaches"} shown{cursor ? ", more available" : ""}
       </p>
-      <ul className="flex flex-col gap-2" aria-label="Teachers and coaches">
+      <ul className="grid grid-cols-1 gap-3 min-[340px]:grid-cols-2 lg:grid-cols-3" aria-label="Teachers and coaches">
         {teachers.map((t) => (
           <TeacherCard key={t.id} teacher={t} messagingState={messagingState} />
         ))}

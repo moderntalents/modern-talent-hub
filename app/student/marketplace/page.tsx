@@ -40,7 +40,7 @@ export default async function MarketplacePage({
         <p className="text-sm text-ink-soft">Sports, Martial Arts, Performing Arts &amp; Music, Creative Tech &amp; Mind Games.</p>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0" role="navigation" aria-label="Activity categories">
         <Link
           href="/student/marketplace"
           className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold ${!category ? "border-ink bg-ink text-white" : "border-line bg-surface"}`}
@@ -65,17 +65,19 @@ export default async function MarketplacePage({
             return (
             <Link key={activity.id} href={`/student/marketplace/${activity.id}`}>
               <Card className="flex flex-col gap-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-semibold">{activity.title}</p>
-                    <p className="text-xs text-ink-faint">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="break-words font-semibold">{activity.title}</p>
+                    <p className="break-words text-xs text-ink-faint">
                       by {(activity as unknown as { profiles: { full_name: string } | null }).profiles?.full_name ?? "Teacher"}
                     </p>
                   </div>
-                  <Badge tone="info">{activity.category}</Badge>
+                  <span className="shrink-0">
+                    <Badge tone="info">{activity.category}</Badge>
+                  </span>
                 </div>
                 {activity.description && (
-                  <p className="line-clamp-2 text-sm text-ink-soft">{activity.description}</p>
+                  <p className="line-clamp-2 break-words text-sm text-ink-soft">{activity.description}</p>
                 )}
                 {live && (
                   <div className="flex items-center gap-2">
