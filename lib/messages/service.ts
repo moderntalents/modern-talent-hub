@@ -84,6 +84,18 @@ export function startFromActivity(admin: Admin, studentId: string, activityId: s
   );
 }
 
+/**
+ * Student → a teacher/coach they have an active subscription with (the "Message" button in the
+ * teacher directory). The database gets or creates THE ONE conversation for the pair, so an existing
+ * conversation is simply returned and a second one can never be made.
+ */
+export function startAsStudent(admin: Admin, studentId: string, teacherId: string) {
+  if (!isUuid(teacherId)) return Promise.resolve(fail("That teacher couldn't be found."));
+  return start(admin, studentId, () =>
+    admin.rpc("start_conversation_as_student", { p_student: studentId, p_teacher: teacherId }),
+  );
+}
+
 /** Teacher → one of their own active subscribers, who must be 18 or over (checked by the database). */
 export function startAsTeacher(admin: Admin, teacherId: string, studentId: string) {
   if (!isUuid(studentId)) return Promise.resolve(fail("That student couldn't be found."));

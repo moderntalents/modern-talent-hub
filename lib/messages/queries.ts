@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DELETED_MESSAGE_TEXT, isUuid, threadReadOnlyReason, type MessageKind } from "@/lib/messages/rules";
+import { avatarSrc } from "@/lib/directory/rules";
 
 // What the messaging pages read. Conversations and messages are read AS THE SIGNED-IN PERSON, so
 // row-level security applies: someone only ever gets back conversations they are one of the two
@@ -21,9 +22,31 @@ export async function getDisplayNames(ids: string[]): Promise<Map<string, string
   return names;
 }
 
+/**
+ * Name and picture for people the caller already has a conversation with. Only a COACH has a picture
+ * to show (a student's is always their initials), and the address is vetted by avatarSrc() — a file in
+ * that person's own folder of the public avatars bucket, or nothing. Like getDisplayNames, it only ever
+ * returns what is shown on screen, for ids taken from conversations the caller was allowed to read.
+ */
+async function getDisplayPeople(ids: string[]): Promise<Map<string, { name: string; avatarSrc: string | null }>> {
+  const people = new Map<string, { name: string; avatarSrc: string | null }>();
+  const unique = [...new Set(ids)].filter(isUuid);
+  if (unique.length === 0) return people;
+  const { data } = await createAdminClient().from("profiles").select("id, full_name, role, avatar_url").in("id", unique);
+  for (const p of data ?? []) {
+    people.set(p.id, {
+      name: p.full_name,
+      avatarSrc: p.role === "teacher" ? avatarSrc(p.avatar_url, p.id, process.env.NEXT_PUBLIC_SUPABASE_URL) : null,
+    });
+  }
+  return people;
+}
+
 export interface ConversationSummary {
   id: string;
   otherName: string;
+  /** The other person's picture, or null (show their initials). */
+  otherAvatarSrc: string | null;
   lastMessageAt: string;
   preview: string;
   lastKind: MessageKind | null;
@@ -58,7 +81,7 @@ export async function listConversations(myId: string, role: "student" | "teacher
   for (const m of recent ?? []) if (!latest.has(m.conversation_id)) latest.set(m.conversation_id, m);
 
   const otherId = (c: { student_id: string; teacher_id: string }) => (role === "student" ? c.teacher_id : c.student_id);
-  const names = await getDisplayNames(conversations.map(otherId));
+  const people = await getDisplayPeople(conversations.map(otherId));
 
   // A teacher doesn't see a thread until something has been written in it: a thread a student opened
   // without writing stays out of the teacher's list (with an under-18 student the teacher couldn't
@@ -70,7 +93,8 @@ export async function listConversations(myId: string, role: "student" | "teacher
     const last = latest.get(c.id);
     return {
       id: c.id,
-      otherName: names.get(otherId(c)) ?? (role === "student" ? "Teacher" : "Student"),
+      otherName: people.get(otherId(c))?.name ?? (role === "student" ? "Teacher" : "Student"),
+      otherAvatarSrc: people.get(otherId(c))?.avatarSrc ?? null,
       lastMessageAt: c.last_message_at,
       preview: last ? previewOf(last.body, last.attachment_name, last.deleted_at !== null) : "No messages yet",
       // A deleted message is shown as plain text, without its Homework / Submission label.
@@ -97,6 +121,8 @@ export interface ThreadMessage {
 export interface Thread {
   id: string;
   otherName: string;
+  /** The other person's picture, or null (show their initials). */
+  otherAvatarSrc: string | null;
   messages: ThreadMessage[];
   /** null when the person can write; otherwise why the thread is read-only. */
   readOnlyReason: string | null;
@@ -122,7 +148,7 @@ export async function getThread(conversationId: string, myId: string, role: "stu
     .limit(200);
 
   const otherId = role === "student" ? conversation.teacher_id : conversation.student_id;
-  const names = await getDisplayNames([otherId]);
+  const people = await getDisplayPeople([otherId]);
 
   // The same check the send path runs (lib/messages/service.ts), so the message box is shown exactly
   // when sending would be accepted. A failed check used to fall through to "closed", hiding the box
@@ -135,7 +161,8 @@ export async function getThread(conversationId: string, myId: string, role: "stu
 
   return {
     id: conversation.id,
-    otherName: names.get(otherId) ?? (role === "student" ? "Teacher" : "Student"),
+    otherName: people.get(otherId)?.name ?? (role === "student" ? "Teacher" : "Student"),
+    otherAvatarSrc: people.get(otherId)?.avatarSrc ?? null,
     readOnlyReason: threadReadOnlyReason(status, !!statusError),
     messages: (rows ?? [])
       .reverse()
