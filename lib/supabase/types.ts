@@ -915,7 +915,7 @@ export interface Database {
         Args: { p_student: string; p_teacher: string };
         Returns: string;
       };
-      // The teachers/coaches one student may find: active subscription only. Keyset-paged.
+      // The teachers/coaches students may find: approved, finished account setup, something published. Keyset-paged.
       student_directory: {
         Args: {
           p_student: string;
@@ -932,8 +932,10 @@ export interface Database {
           avatar_url: string | null;
           specialty: string | null;
           bio: string | null;
+          kind: "Coach" | "Teacher";
           activities: { id: string; title: string }[];
           conversation_id: string | null;
+          can_message: boolean;
         }[];
       };
       // Adult, approved students with an active subscription to this approved teacher's activities: the
