@@ -5,6 +5,7 @@ import { Card, Badge } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { WithdrawForm } from "./WithdrawForm";
 import { PAYMENT_VISIBLE_COLUMNS } from "@/lib/payment-columns";
+import { PaymentBreakdown } from "@/components/payments/PaymentBreakdown";
 
 const WITHDRAWAL_TONE = {
   pending: "warning",
@@ -52,7 +53,7 @@ export default async function TeacherWalletPage() {
       <div>
         <h1 className="font-head text-xl font-extrabold">Wallet</h1>
         <p className="text-sm text-ink-soft">
-          You keep {REVENUE_SPLIT.teacherPct}% of every payment; {REVENUE_SPLIT.platformPct}% goes to the platform.
+          You keep {REVENUE_SPLIT.teacherPct}% of every payment; {REVENUE_SPLIT.platformPct}% goes to the platform. Posting lessons and activities is free.
         </p>
       </div>
 
@@ -104,12 +105,20 @@ export default async function TeacherWalletPage() {
         {transactions && transactions.length > 0 ? (
           <div className="flex flex-col gap-2">
             {transactions.map((t) => (
-              <Card key={t.id} className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-ink-faint">{new Date(t.completed_at!).toLocaleDateString("en-KE")}</p>
-                  {t.provider_reference && <p className="font-mono text-xs text-ink-faint">{t.provider_reference}</p>}
+              <Card key={t.id} className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-ink-faint">{new Date(t.completed_at ?? t.created_at).toLocaleDateString("en-KE")}</p>
+                  <Badge tone="success">{t.status}</Badge>
                 </div>
-                <p className="font-mono text-sm font-semibold text-[var(--success-text)]">+{formatKes(t.teacher_share)}</p>
+                {t.provider_reference && <p className="break-words font-mono text-xs text-ink-faint">Ref {t.provider_reference}</p>}
+                <PaymentBreakdown
+                  gross={Number(t.expected_amount ?? t.amount)}
+                  teacherShare={Number(t.teacher_share)}
+                  platformShare={Number(t.platform_share)}
+                  teacherPct={t.teacher_pct}
+                  platformPct={t.platform_pct}
+                  completed
+                />
               </Card>
             ))}
           </div>
