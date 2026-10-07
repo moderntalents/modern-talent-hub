@@ -33,7 +33,6 @@ export type ReconciliationEventType =
   | "retry_authorized"
   | "admin_resolved"
   | "urgent_review_flagged";
-export type ActivationPaymentStatus = "pending" | "completed" | "failed" | "expired";
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 
@@ -86,8 +85,6 @@ export interface Database {
           bank_name: string | null;
           bank_account: string | null;
           wallet_balance: number;
-          activated: boolean;
-          activated_at: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["teacher_profiles"]["Row"]> & {
           profile_id: string;
@@ -549,37 +546,6 @@ export interface Database {
           },
         ];
       };
-      coach_activation_payments: {
-        Row: {
-          id: string;
-          teacher_id: string;
-          amount: number;
-          currency: string;
-          phone: string;
-          status: ActivationPaymentStatus;
-          checkout_request_id: string | null;
-          merchant_request_id: string | null;
-          provider_reference: string | null;
-          result_desc: string | null;
-          created_at: string;
-          completed_at: string | null;
-        };
-        Insert: Partial<Database["public"]["Tables"]["coach_activation_payments"]["Row"]> & {
-          teacher_id: string;
-          amount: number;
-          phone: string;
-        };
-        Update: Partial<Database["public"]["Tables"]["coach_activation_payments"]["Row"]>;
-        Relationships: [
-          {
-            foreignKeyName: "coach_activation_payments_teacher_id_fkey";
-            columns: ["teacher_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       // Added by 0013_payment_state_machine_and_ledger.sql (Phase 1: database only; Phase 2 is the first app code to use this).
       mpesa_callbacks: {
         Row: {
@@ -915,7 +881,7 @@ export interface Database {
         Args: { p_student: string; p_teacher: string };
         Returns: string;
       };
-      // The teachers/coaches students may find: approved, finished account setup, something published. Keyset-paged.
+      // The approved teachers/coaches a student may discover (0021). Keyset-paged.
       student_directory: {
         Args: {
           p_student: string;
@@ -932,10 +898,10 @@ export interface Database {
           avatar_url: string | null;
           specialty: string | null;
           bio: string | null;
-          kind: "Coach" | "Teacher";
+          kind: string | null;
           activities: { id: string; title: string }[];
           conversation_id: string | null;
-          can_message: boolean;
+          can_message: boolean | null;
         }[];
       };
       // Adult, approved students with an active subscription to this approved teacher's activities: the
