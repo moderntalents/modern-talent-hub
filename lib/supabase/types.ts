@@ -59,6 +59,8 @@ export interface Database {
           grade: string | null;
           school_name: string | null;
           parent_phone: string | null;
+          /** PP1, PP2, G1 … G12 — set by the database from `grade` (migration 0024); never written directly. */
+          grade_code: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["student_profiles"]["Row"]> & {
           profile_id: string;
@@ -100,6 +102,17 @@ export interface Database {
           },
         ];
       };
+      education_levels: {
+        Row: {
+          code: string;
+          name: string;
+          grades: string;
+          order_index: number;
+        };
+        Insert: Database["public"]["Tables"]["education_levels"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["education_levels"]["Row"]>;
+        Relationships: [];
+      };
       subjects: {
         Row: {
           id: string;
@@ -107,10 +120,23 @@ export interface Database {
           description: string | null;
           color: string;
           order_index: number;
+          /** education_levels.code (migration 0024). */
+          level: string;
+          /** Senior School only: core | stem | social_sciences | arts_sports. */
+          pathway: string | null;
+          active: boolean;
         };
         Insert: Partial<Database["public"]["Tables"]["subjects"]["Row"]>;
         Update: Partial<Database["public"]["Tables"]["subjects"]["Row"]>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "subjects_level_fkey";
+            columns: ["level"];
+            isOneToOne: false;
+            referencedRelation: "education_levels";
+            referencedColumns: ["code"];
+          },
+        ];
       };
       lessons: {
         Row: {
