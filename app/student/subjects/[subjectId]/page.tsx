@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { LiveBadge } from "@/components/live/LiveBadge";
 import { getLiveSummaries } from "@/lib/live/queries";
 import { effectiveLiveStatus, formatSchedule } from "@/lib/live/status";
+import { levelName } from "@/lib/education";
 
 export default async function SubjectDetailPage({
   params,
@@ -34,7 +35,10 @@ export default async function SubjectDetailPage({
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="font-head text-xl font-extrabold">{subject.name}</h1>
-        <p className="text-sm text-ink-soft">{lessons?.length ?? 0} lessons available</p>
+        <p className="text-sm text-ink-soft">
+          {levelName(subject.level) ? `${levelName(subject.level)} · ` : ""}
+          {lessons?.length ?? 0} lessons available
+        </p>
       </div>
 
       {lessons && lessons.length > 0 ? (

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { Card, Field, Input, Textarea } from "@/components/ui/Card";
+import { Card, Field, Input, Select, Textarea } from "@/components/ui/Card";
+import { GRADE_OPTIONS } from "@/lib/education";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { PROFILE_LIMITS, type EditableRole, type ProfileInput } from "@/lib/profile-edit";
 import { saveMyProfile } from "./profile-actions";
@@ -31,8 +32,10 @@ export function ProfilePanel({
   const [errors, setErrors] = useState<Errors>({});
   const [saved, setSaved] = useState(false);
 
-  const set = (key: keyof ProfileInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setForm((f) => ({ ...f, [key]: e.target.value }));
+  const set =
+    (key: keyof ProfileInput) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      setForm((f) => ({ ...f, [key]: e.target.value }));
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -140,14 +143,19 @@ export function ProfilePanel({
         {role === "student" && (
           <>
             <Field label="Grade/class" htmlFor="profile-grade" error={errors.grade}>
-              <Input
-                id="profile-grade"
-                value={form.grade}
-                onChange={set("grade")}
-                maxLength={PROFILE_LIMITS.grade}
-                placeholder="Grade 6"
-                disabled={saving}
-              />
+              {/* A list, so the database can tell the student's school level (migration 0024). A grade saved
+                  earlier in another form ("Form 2") stays selectable until it is changed. */}
+              <Select id="profile-grade" value={form.grade} onChange={set("grade")} disabled={saving}>
+                <option value="">Choose your grade</option>
+                {form.grade && !GRADE_OPTIONS.some((g) => g.label === form.grade) && (
+                  <option value={form.grade}>{form.grade}</option>
+                )}
+                {GRADE_OPTIONS.map((g) => (
+                  <option key={g.code} value={g.label}>
+                    {g.label}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="School (optional)" htmlFor="profile-school" error={errors.schoolName}>
               <Input
