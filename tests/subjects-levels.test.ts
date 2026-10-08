@@ -75,15 +75,15 @@ describe("school levels and subjects", () => {
   });
 
   test("the same subject name can exist once per level", async () => {
-    await db.exec(`insert into subjects (name, level) values ('Mathematics', 'junior'), ('Mathematics', 'senior')`);
-    await assert.rejects(db.exec(`insert into subjects (name, level) values ('Mathematics', 'junior')`));
+    await db.exec(`insert into subjects (name, level) values ('Astronomy', 'junior'), ('Astronomy', 'senior')`);
+    await assert.rejects(db.exec(`insert into subjects (name, level) values ('Astronomy', 'junior')`));
     await assert.rejects(db.exec(`insert into subjects (name, level) values ('Robotics', 'university')`));
   });
 
   test("pathways are for Senior School only", async () => {
-    await db.exec(`insert into subjects (name, level, pathway) values ('Physics', 'senior', 'stem')`);
+    await db.exec(`insert into subjects (name, level, pathway) values ('General Science', 'senior', 'stem')`);
     await assert.rejects(db.exec(`insert into subjects (name, level, pathway) values ('Science', 'junior', 'stem')`));
-    await assert.rejects(db.exec(`insert into subjects (name, level, pathway) values ('Chemistry', 'senior', 'medicine')`));
+    await assert.rejects(db.exec(`insert into subjects (name, level, pathway) values ('Woodwork', 'senior', 'medicine')`));
   });
 
   test("a subject with lessons cannot be deleted (its lessons are never deleted with it)", async () => {
@@ -113,11 +113,11 @@ describe("school levels and subjects", () => {
     }
     assert.equal(await rejects(db, "anon", `insert into subjects (name, level) values ('Anon', 'primary')`), true);
     assert.equal(
-      await rejects(db, { id: ID.ADMIN }, `insert into subjects (name, level, pathway) values ('Biology', 'senior', 'stem')`),
+      await rejects(db, { id: ID.ADMIN }, `insert into subjects (name, level, pathway) values ('Hindu Religious Education', 'senior', 'social_sciences')`),
       false,
     );
-    assert.equal(await rejects(db, { id: ID.ADMIN }, `update subjects set active = false where name = 'Biology'`), false);
-    assert.equal(await rejects(db, { id: ID.ADMIN }, `delete from subjects where name = 'Biology'`), false);
+    assert.equal(await rejects(db, { id: ID.ADMIN }, `update subjects set active = false where name = 'Hindu Religious Education'`), false);
+    assert.equal(await rejects(db, { id: ID.ADMIN }, `delete from subjects where name = 'Hindu Religious Education'`), false);
   });
 });
 
