@@ -13,6 +13,8 @@ import { LinkButton } from "@/components/ui/Button";
  * /student/teachers page. The database searches, orders and pages the list (migration 0021); only
  * approved teachers/coaches with something published are ever returned, and never anything private.
  * `basePath` is where "Clear search" returns to; `pageSize` is how many cards load at a time.
+ * `searchOnly` (student dashboard) shows just the search box until something is typed: no cards
+ * are listed before a search. Every other page leaves it off and lists teachers/coaches as before.
  */
 export async function CoachBrowser({
   studentId,
@@ -23,6 +25,7 @@ export async function CoachBrowser({
   placeholder,
   emptyTitle,
   emptyDescription,
+  searchOnly = false,
 }: {
   studentId: string;
   query: string;
@@ -34,7 +37,17 @@ export async function CoachBrowser({
   /** What to say when nobody matches the scope (and there is no search text). */
   emptyTitle?: string;
   emptyDescription?: string;
+  /** Show only the search box until the student searches (no profiles listed before a search). */
+  searchOnly?: boolean;
 }) {
+  if (searchOnly && !query) {
+    return (
+      <div className="flex min-w-0 flex-col gap-3">
+        <DirectorySearch initialQuery={query} placeholder={placeholder} />
+      </div>
+    );
+  }
+
   const admin = createAdminClient();
   const [directory, account] = await Promise.all([
     listDirectory(admin, studentId, { query, pageSize, scope, supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL }),
