@@ -4,6 +4,7 @@ import { AppShell } from "@/components/nav/AppShell";
 const NAV_ITEMS = [
   { href: "/admin", label: "Home", icon: "🏠" },
   { href: "/admin/teachers", label: "Teachers", icon: "🧑‍🏫" },
+  { href: "/admin/subjects", label: "Subjects", icon: "📚" },
   { href: "/admin/withdrawals", label: "Withdrawals", icon: "💸" },
   { href: "/admin/transactions", label: "Transactions", icon: "📊" },
   { href: "/admin/live", label: "Live", icon: "🎥" },
