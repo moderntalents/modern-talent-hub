@@ -1,17 +1,17 @@
-// School levels and grades for Subjects (migration 0024). The database is the authority — these mirror
-// education_levels, grade_code_from_text() and education_level_for_grade() so pages can label things and
-// validate input without an extra round trip. tests/subjects-levels.test.ts keeps the two in step.
+// School levels and grades for Subjects (migrations 0024 and 0026). The database is the authority — these
+// mirror education_levels, grade_code_from_text() and education_level_for_grade() so pages can label things
+// and validate input without an extra round trip. tests/subjects-levels.test.ts keeps the two in step.
 
 export type EducationLevelCode = "pre_primary" | "primary" | "junior" | "senior";
 export type GradeCode =
-  | "PP1" | "PP2"
+  | "PG" | "PP1" | "PP2"
   | "G1" | "G2" | "G3" | "G4" | "G5" | "G6"
   | "G7" | "G8" | "G9"
   | "G10" | "G11" | "G12";
 export type SeniorPathway = "core" | "stem" | "social_sciences" | "arts_sports";
 
 export const EDUCATION_LEVELS: { code: EducationLevelCode; name: string; grades: string }[] = [
-  { code: "pre_primary", name: "Pre-primary", grades: "PP1–PP2" },
+  { code: "pre_primary", name: "Pre-primary", grades: "Playgroup–PP2" },
   { code: "primary", name: "Primary (CBC)", grades: "Grades 1–6" },
   { code: "junior", name: "Junior School", grades: "Grades 7–9" },
   { code: "senior", name: "Senior School", grades: "Grades 10–12" },
@@ -19,6 +19,7 @@ export const EDUCATION_LEVELS: { code: EducationLevelCode; name: string; grades:
 
 /** The choices students pick from. `label` is what is saved in student_profiles.grade. */
 export const GRADE_OPTIONS: { code: GradeCode; label: string }[] = [
+  { code: "PG", label: "Playgroup" },
   { code: "PP1", label: "PP1" },
   { code: "PP2", label: "PP2" },
   ...Array.from({ length: 12 }, (_, i) => ({ code: `G${i + 1}` as GradeCode, label: `Grade ${i + 1}` })),
@@ -50,6 +51,11 @@ export function levelName(code: string | null | undefined): string {
   return EDUCATION_LEVELS.find((l) => l.code === code)?.name ?? "";
 }
 
+/** The level's name without its bracketed note — "Primary (CBC)" -> "Primary" — for short labels. */
+export function levelShortName(code: string | null | undefined): string {
+  return levelName(code).replace(/\s*\(.*\)$/, "");
+}
+
 export function pathwayName(code: string | null | undefined): string {
   return SENIOR_PATHWAYS.find((p) => p.code === code)?.name ?? "";
 }
@@ -62,6 +68,7 @@ export function gradeLabel(code: string | null | undefined): string {
 export function gradeCodeFromText(grade: string | null | undefined): GradeCode | null {
   const t = (grade ?? "").replace(/[^a-zA-Z0-9]+/g, "").toLowerCase();
   if (!t) return null;
+  if (/^(?:playgroup|pg)$/.test(t)) return "PG";
   const pp = /^(?:pp|preprimary|preunit)([12])$/.exec(t);
   if (pp) return `PP${pp[1]}` as GradeCode;
   const g = /^(?:grade|gr|g|class|standard|std)?([0-9]{1,2})$/.exec(t);
@@ -74,7 +81,7 @@ export function gradeCodeFromText(grade: string | null | undefined): GradeCode |
 
 /** Same rules as the database's education_level_for_grade(). */
 export function levelForGrade(code: string | null | undefined): EducationLevelCode | null {
-  if (code === "PP1" || code === "PP2") return "pre_primary";
+  if (code === "PG" || code === "PP1" || code === "PP2") return "pre_primary";
   const n = code && /^G([0-9]{1,2})$/.exec(code) ? Number(code.slice(1)) : NaN;
   if (n >= 1 && n <= 6) return "primary";
   if (n >= 7 && n <= 9) return "junior";

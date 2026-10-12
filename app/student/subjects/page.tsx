@@ -6,7 +6,7 @@ import { normalizeSearch } from "@/lib/directory/rules";
 import { CoachBrowser } from "@/components/directory/CoachBrowser";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Card } from "@/components/ui/Card";
-import { EDUCATION_LEVELS, gradeLabel, isLevelCode, levelForGrade, levelName } from "@/lib/education";
+import { EDUCATION_LEVELS, gradeLabel, isLevelCode, levelForGrade, levelName, levelShortName } from "@/lib/education";
 import { GradePicker } from "./GradePicker";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +48,13 @@ export default async function SubjectsPage({
   // Which level is showing: the one picked, else the linked subject's, else the student's own. No level at
   // all (grade not set yet, nothing picked) shows every subject, as before.
   const level = isLevelCode(levelParam) ? levelParam : (linkedSubject?.level ?? myLevel ?? null);
-  const subjects = level ? (allSubjects ?? []).filter((s) => s.level === level) : (allSubjects ?? []);
+  // With no level, every level's subjects show together, so the same name can appear more than once
+  // ("English" for Primary, Junior and Senior). They are grouped by level and labelled with it.
+  const levelOrder = (code: string) => EDUCATION_LEVELS.findIndex((l) => l.code === code);
+  const subjects = level
+    ? (allSubjects ?? []).filter((s) => s.level === level)
+    : [...(allSubjects ?? [])].sort((a, b) => levelOrder(a.level) - levelOrder(b.level) || a.order_index - b.order_index);
+  const subjectLabel = (s: { name: string; level: string }) => (level ? s.name : `${s.name} (${levelShortName(s.level)})`);
   const selected = linkedSubject && subjects.some((s) => s.id === linkedSubject.id) ? linkedSubject : undefined;
   const levelQuery = level ? `level=${level}` : "";
   const subjectsHref = (subjectId?: string) => {
@@ -110,7 +116,7 @@ export default async function SubjectsPage({
               aria-current={selected?.id === subject.id ? "page" : undefined}
               className={pill(selected?.id === subject.id)}
             >
-              {subject.name}
+              {subjectLabel(subject)}
             </Link>
           ))}
         </div>

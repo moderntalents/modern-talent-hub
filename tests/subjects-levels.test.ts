@@ -12,6 +12,7 @@ import {
   GRADE_OPTIONS,
   gradeCodeFromText,
   levelForGrade,
+  levelShortName,
 } from "../lib/education";
 import { parseSubjectInput, subjectDbErrorMessage } from "../lib/subjects-admin";
 
@@ -154,6 +155,7 @@ describe("student grade -> level", () => {
       ...GRADE_OPTIONS.map((g) => g.label),
       "grade6", "G 7", "Gr.9", "Class 4", "Std 5", "Standard 3", "pp1", "PP 2", "Pre-primary 1", "pre unit 2",
       "10", " Grade 12 ", "Form 2", "Form 4", "Grade 13", "Grade 0", "PP3", "", "Year 5", "grade seven",
+      "Playgroup", "playgroup", "Play group", "PLAY-GROUP", "PG", "pg", "Play school", "Playgroup 2",
     ];
     for (const s of samples) {
       const dbCode = (await one<{ c: string | null }>(`select grade_code_from_text($1) c`, [s]))!.c;
@@ -163,8 +165,69 @@ describe("student grade -> level", () => {
     }
     for (const g of GRADE_OPTIONS) assert.equal(gradeCodeFromText(g.label), g.code, "every option reads back as itself");
     assert.deepEqual(
-      ["PP1", "PP2", "G1", "G6", "G7", "G9", "G10", "G12", null].map(levelForGrade),
-      ["pre_primary", "pre_primary", "primary", "primary", "junior", "junior", "senior", "senior", null],
+      ["PG", "PP1", "PP2", "G1", "G6", "G7", "G9", "G10", "G12", null].map(levelForGrade),
+      ["pre_primary", "pre_primary", "pre_primary", "primary", "primary", "junior", "junior", "senior", "senior", null],
+    );
+  });
+
+  test("Playgroup is offered first, ahead of PP1, and is a Pre-primary grade", () => {
+    assert.deepEqual(GRADE_OPTIONS.slice(0, 3), [
+      { code: "PG", label: "Playgroup" },
+      { code: "PP1", label: "PP1" },
+      { code: "PP2", label: "PP2" },
+    ]);
+    assert.equal(GRADE_OPTIONS.length, 15, "Playgroup, PP1, PP2 and Grades 1–12");
+    assert.equal(levelForGrade(gradeCodeFromText("Playgroup")), "pre_primary");
+  });
+
+  test("a student can save Playgroup and is placed in Pre-primary", async () => {
+    await as(db, { id: ID.S1 }, () => db.query(`update student_profiles set grade = 'Playgroup' where profile_id = $1`, [ID.S1]));
+    const row = await one<{ grade: string; level: string }>(
+      `select grade, education_level_for_grade(grade_code) as level from student_profiles where profile_id = $1`,
+      [ID.S1],
+    );
+    assert.deepEqual(row, { grade: "Playgroup", level: "pre_primary" });
+  });
+});
+
+describe("migration 0026 (Playgroup) on a database that already has 0024 and 0025", () => {
+  let before0026: PGlite;
+
+  test("existing Playgroup students are recognised; other grades and every grade text are unchanged", async () => {
+    before0026 = await createTestDb({ upTo: "0025_approved_starter_subjects.sql" });
+    await seedWorld(before0026);
+    await before0026.exec(`
+      update student_profiles set grade = 'Playgroup' where profile_id = '${ID.S1}';
+      update student_profiles set grade = 'Grade 8' where profile_id = '${ID.S2}';
+      update student_profiles set grade = 'Form 2' where profile_id = '${ID.S3}';
+    `);
+    const read = async () =>
+      (await before0026.query<{ grade: string; grade_code: string | null }>(
+        `select grade, grade_code from student_profiles where profile_id in ('${ID.S1}','${ID.S2}','${ID.S3}') order by profile_id`,
+      )).rows.map((r) => [r.grade, r.grade_code]);
+    const subjectsBefore = (await before0026.query("select * from subjects order by id")).rows;
+
+    assert.deepEqual(await read(), [["Playgroup", null], ["Grade 8", "G8"], ["Form 2", null]], "before: Playgroup not read");
+    await before0026.exec(readMigration("0026_playgroup_grade.sql"));
+    assert.deepEqual(await read(), [["Playgroup", "PG"], ["Grade 8", "G8"], ["Form 2", null]], "after: Playgroup read as PG");
+
+    assert.deepEqual((await before0026.query("select * from subjects order by id")).rows, subjectsBefore, "subjects untouched");
+    const pre = await before0026.query<{ grades: string }>(`select grades from education_levels where code = 'pre_primary'`);
+    assert.equal(pre.rows[0].grades, "Playgroup–PP2");
+  });
+
+  test("re-running 0026 is harmless", async () => {
+    await before0026.exec(readMigration("0026_playgroup_grade.sql"));
+    const n = await before0026.query<{ n: number }>(`select count(*)::int n from student_profiles where grade_code = 'PG'`);
+    assert.equal(n.rows[0].n, 1);
+  });
+});
+
+describe("subject labels when every level is shown", () => {
+  test("short level names drop the bracketed note", () => {
+    assert.deepEqual(
+      ["pre_primary", "primary", "junior", "senior", "unknown"].map(levelShortName),
+      ["Pre-primary", "Primary", "Junior School", "Senior School", ""],
     );
   });
 });
