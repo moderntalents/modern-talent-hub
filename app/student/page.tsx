@@ -18,15 +18,12 @@ export default async function StudentHome({
   const session = await getSessionProfile();
   const supabase = await createClient();
 
-  const [{ count: subjectCount }, { data: activeSubs }] = await Promise.all([
-    supabase.from("subjects").select("*", { count: "exact", head: true }),
-    supabase
-      .from("subscriptions")
-      .select("id, activities(title)")
-      .eq("student_id", session!.user.id)
-      .eq("status", "active")
-      .returns<{ id: string; activities: { title: string } | null }[]>(),
-  ]);
+  const { data: activeSubs } = await supabase
+    .from("subscriptions")
+    .select("id, activities(title)")
+    .eq("student_id", session!.user.id)
+    .eq("status", "active")
+    .returns<{ id: string; activities: { title: string } | null }[]>();
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
@@ -41,8 +38,8 @@ export default async function StudentHome({
         <Link href="/student/subjects">
           <Card className="flex flex-col gap-1">
             <span className="text-2xl">📘</span>
-            <p className="font-semibold">{subjectCount ?? 0} CBC Subjects</p>
-            <p className="text-xs text-ink-faint">Lessons &amp; materials</p>
+            <p className="font-semibold">School Subjects</p>
+            <p className="text-xs text-ink-faint">Primary &amp; High School</p>
           </Card>
         </Link>
         <Link href="/student/marketplace">
@@ -66,7 +63,7 @@ export default async function StudentHome({
             See all
           </Link>
         </div>
-        <CoachBrowser studentId={session!.user.id} query={query} pageSize={6} basePath="/student" />
+        <CoachBrowser studentId={session!.user.id} query={query} pageSize={6} basePath="/student" searchOnly />
       </section>
 
       <div>
