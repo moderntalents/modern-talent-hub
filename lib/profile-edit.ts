@@ -26,7 +26,7 @@ export const PROFILE_LIMITS = { fullName: 100, phone: 30, grade: 50, schoolName:
 
 export interface ProfileChanges {
   profiles: { full_name: string; phone?: string | null };
-  student?: { grade: string; school_name: string | null };
+  student?: { grade: string | null; school_name: string | null };
   teacher?: { specialty: string; bio: string | null };
 }
 
@@ -47,6 +47,14 @@ export function phoneProblem(phone: string): string | null {
 /** Whether the phone field is shown at all. Under-13s are never asked for (or keep) a phone number. */
 export function phoneEditable(group: AgeGroup | null): boolean {
   return group !== "child";
+}
+
+/**
+ * Whether a student must give a grade/class. Same rule as sign-up (lib/registration.ts): students under 18
+ * must, students aged 18 or over needn't. Without an age record it stays required, as it always was.
+ */
+export function gradeRequired(role: EditableRole, group: AgeGroup | null): boolean {
+  return role === "student" && group !== "adult";
 }
 
 /**
@@ -81,10 +89,11 @@ export function validateProfile(role: EditableRole, group: AgeGroup | null, inpu
   // Under 13: the phone column is left exactly as it is (not written at all).
 
   if (role === "student") {
-    if (!grade) errors.grade = "Enter your grade/class.";
-    else if (grade.length > PROFILE_LIMITS.grade) errors.grade = `Keep this under ${PROFILE_LIMITS.grade} characters.`;
+    if (!grade) {
+      if (gradeRequired(role, group)) errors.grade = "Enter your grade/class.";
+    } else if (grade.length > PROFILE_LIMITS.grade) errors.grade = `Keep this under ${PROFILE_LIMITS.grade} characters.`;
     if (schoolName.length > PROFILE_LIMITS.schoolName) errors.schoolName = `Keep this under ${PROFILE_LIMITS.schoolName} characters.`;
-    changes.student = { grade, school_name: schoolName || null };
+    changes.student = { grade: grade || null, school_name: schoolName || null };
   }
 
   if (role === "teacher") {

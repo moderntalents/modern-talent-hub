@@ -18,11 +18,13 @@ export function ProfilePanel({
   initial,
   showPhone,
   phoneOptional,
+  gradeOptional,
 }: {
   role: EditableRole;
   initial: ProfileInput;
   showPhone: boolean; // false for under-13s, who are never asked for a phone number
   phoneOptional: boolean; // same rule as sign-up: only adults (not admins) must give one
+  gradeOptional: boolean; // same rule as sign-up: students aged 18 or over needn't give a grade
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -142,7 +144,7 @@ export function ProfilePanel({
 
         {role === "student" && (
           <>
-            <Field label="Grade/class" htmlFor="profile-grade" error={errors.grade}>
+            <Field label={gradeOptional ? "Grade/class (optional)" : "Grade/class"} htmlFor="profile-grade" error={errors.grade}>
               {/* A list, so the database can tell the student's school level (migration 0024). A grade saved
                   earlier in another form ("Form 2") stays selectable until it is changed. */}
               <Select id="profile-grade" value={form.grade} onChange={set("grade")} disabled={saving}>
