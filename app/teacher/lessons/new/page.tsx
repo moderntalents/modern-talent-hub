@@ -4,7 +4,12 @@ import { NewLessonForm } from "./NewLessonForm";
 
 export default async function NewLessonPage() {
   const supabase = await createClient();
-  const { data: subjects } = await supabase.from("subjects").select("id, name").order("order_index");
+  // Active subjects only, grouped by school level in the form (migration 0024).
+  const { data: subjects } = await supabase
+    .from("subjects")
+    .select("id, name, level")
+    .eq("active", true)
+    .order("order_index");
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4">

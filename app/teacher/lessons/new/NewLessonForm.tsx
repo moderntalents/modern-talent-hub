@@ -11,8 +11,9 @@ import { uploadAndAttach } from "@/lib/upload-client";
 import { validateUpload } from "@/lib/uploads";
 import { attachMaterial } from "../[lessonId]/actions";
 import { createLesson } from "./actions";
+import { EDUCATION_LEVELS } from "@/lib/education";
 
-export function NewLessonForm({ subjects }: { subjects: { id: string; name: string }[] }) {
+export function NewLessonForm({ subjects }: { subjects: { id: string; name: string; level: string }[] }) {
   const router = useRouter();
   const [mode, setMode] = useState<"recorded" | "live">("recorded");
   const [scheduledLocal, setScheduledLocal] = useState("");
@@ -120,13 +121,20 @@ export function NewLessonForm({ subjects }: { subjects: { id: string; name: stri
       <Field label="Subject">
         <Select name="subjectId" defaultValue="" required>
           <option value="" disabled>
-            Choose a CBC subject
+            Choose a subject
           </option>
-          {subjects.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
+          {EDUCATION_LEVELS.map((l) => {
+            const inLevel = subjects.filter((s) => s.level === l.code);
+            return inLevel.length > 0 ? (
+              <optgroup key={l.code} label={l.name}>
+                {inLevel.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null;
+          })}
         </Select>
       </Field>
       <Field label="Lesson title">

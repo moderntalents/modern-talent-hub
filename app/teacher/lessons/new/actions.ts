@@ -40,6 +40,9 @@ export async function createLesson(formData: FormData): Promise<FormState> {
   const videoUrl = isLive ? "" : (formData.get("videoUrl") as string)?.trim();
 
   if (!subjectId) return { error: "Choose a subject." };
+  // Hidden subjects (Admin -> Subjects) take no new lessons; existing lessons in them are untouched.
+  const { data: subject } = await supabase.from("subjects").select("active").eq("id", subjectId).maybeSingle();
+  if (!subject?.active) return { error: "Choose a subject from the list." };
   if (!title) return { error: "Enter a lesson title." };
   if (videoUrl && !/^https?:\/\//i.test(videoUrl)) {
     return { error: "The video link must start with http:// or https://" };
