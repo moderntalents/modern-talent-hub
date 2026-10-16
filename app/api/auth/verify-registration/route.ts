@@ -11,6 +11,7 @@ import {
 import { missingDatabaseSetupResponse } from "@/lib/db-errors";
 import { ageGroup, ageInYears, guardianEmailProblem, needsGuardian, parseIsoDate } from "@/lib/age";
 import { recordAge } from "@/lib/consent";
+import { hidesSchoolDetails } from "@/lib/registration";
 
 const str = (v: unknown, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
@@ -38,8 +39,8 @@ export async function POST(request: Request) {
   const dobIso = parseIsoDate(body?.dateOfBirth);
   const guardianEmail = str(body?.guardianEmail, 254);
   const role = body?.role === "teacher" ? "teacher" : body?.role === "student" ? "student" : null;
-  const grade = str(body?.grade, 50);
-  const schoolName = str(body?.schoolName, 150);
+  const gradeInput = str(body?.grade, 50);
+  const schoolInput = str(body?.schoolName, 150);
   const specialty = str(body?.specialty, 150);
   const bio = str(body?.bio, 500);
 
@@ -54,7 +55,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Password must be between 8 and 72 characters." }, { status: 400 });
   }
   if (!role) return NextResponse.json({ error: "Choose student or teacher." }, { status: 400 });
-  if (role === "student" && !grade) return NextResponse.json({ error: "Enter your grade/class." }, { status: 400 });
+  // Students aged 18 or over aren't asked for grade or school (lib/registration.ts), so anything sent for
+  // them is dropped here. The age comes from the date of birth, never from the browser.
+  const hideSchoolDetails = hidesSchoolDetails(role, ageInYears(dobIso));
+  const grade = hideSchoolDetails ? "" : gradeInput;
+  const schoolName = hideSchoolDetails ? "" : schoolInput;
+  if (role === "student" && !hideSchoolDetails && !grade) {
+    return NextResponse.json({ error: "Enter your grade/class." }, { status: 400 });
+  }
   if (role === "teacher" && !specialty) {
     return NextResponse.json({ error: "Enter what you teach." }, { status: 400 });
   }
@@ -159,8 +167,7 @@ export async function POST(request: Request) {
       role,
       full_name: fullName,
       ...(phone ? { phone } : {}),
-      grade,
-      school_name: schoolName,
+      ...(hideSchoolDetails ? {} : { grade, school_name: schoolName }),
       specialty,
       bio,
     },
