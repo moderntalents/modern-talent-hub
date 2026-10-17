@@ -9,7 +9,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { as, createTestDb, rejects } from "./helpers/db";
 import { ID, seedWorld } from "./helpers/seed";
 import { fakeAdmin } from "./helpers/fake-admin";
-import { phoneEditable, validateProfile } from "../lib/profile-edit";
+import { gradeRequired, phoneEditable, validateProfile } from "../lib/profile-edit";
 import { ageSummary, formatBirthDate } from "../lib/age-summary";
 import { threadReadOnlyReason } from "../lib/messages/rules";
 import { messagingLockedLabel } from "../lib/messaging-locked-label";
@@ -48,10 +48,13 @@ describe("profile validation (lib/profile-edit.ts)", () => {
     assert.deepEqual(r.changes, { profiles: { full_name: "George", phone: null } });
   });
 
-  test("the sign-up rules apply: name required, adults need a phone, students a grade, teachers a subject", () => {
-    const r = validateProfile("student", "adult", { ...base, fullName: " ", phone: "", grade: "" });
+  test("the sign-up rules apply: name required, adults need a phone, students under 18 a grade, teachers a subject", () => {
+    const r = validateProfile("student", "teen", { ...base, fullName: " ", phone: "", grade: "" });
     assert.equal(r.ok, false);
-    assert.deepEqual(Object.keys((r as { errors: object }).errors).sort(), ["fullName", "grade", "phone"]);
+    assert.deepEqual(Object.keys((r as { errors: object }).errors).sort(), ["fullName", "grade"]);
+    const a = validateProfile("student", "adult", { ...base, fullName: " ", phone: "", grade: "" });
+    assert.equal(a.ok, false);
+    assert.deepEqual(Object.keys((a as { errors: object }).errors).sort(), ["fullName", "phone"]);
     const t = validateProfile("teacher", "adult", { ...base, specialty: "" });
     assert.equal(t.ok, false);
     assert.ok((t as { errors: { specialty?: string } }).errors.specialty);
@@ -64,6 +67,39 @@ describe("profile validation (lib/profile-edit.ts)", () => {
     }
     assert.equal(validateProfile("student", "adult", { ...base, fullName: "x".repeat(101) }).ok, false);
     assert.equal(validateProfile("teacher", "adult", { ...base, specialty: "Piano", bio: "x".repeat(501) }).ok, false);
+  });
+
+  test("students aged 18 or over can save without a grade or school (same rule as sign-up)", () => {
+    const r = validateProfile("student", "adult", { ...base, fullName: "Adult Learner", grade: "", schoolName: "" });
+    assert.ok(r.ok);
+    assert.deepEqual(r.changes, {
+      profiles: { full_name: "Adult Learner", phone: "0712 345 678" },
+      student: { grade: null, school_name: null },
+    });
+    // An adult who already has a grade keeps it when only the name changes.
+    const kept = validateProfile("student", "adult", { ...base, fullName: "Renamed" });
+    assert.ok(kept.ok);
+    assert.equal(kept.changes.student?.grade, "Grade 6");
+  });
+
+  test("students under 18 (and anyone without an age record) still must give a grade", () => {
+    for (const group of ["teen", "child", null] as const) {
+      const r = validateProfile("student", group, { ...base, phone: "", grade: "  " });
+      assert.equal(r.ok, false, String(group));
+      assert.equal((r as { errors: { grade?: string } }).errors.grade, "Enter your grade/class.");
+    }
+    const ok = validateProfile("student", "teen", { ...base, phone: "", grade: "Grade 9" });
+    assert.ok(ok.ok);
+    assert.equal(ok.changes.student?.grade, "Grade 9");
+  });
+
+  test("which roles must give a grade (gradeRequired)", () => {
+    assert.equal(gradeRequired("student", "child"), true);
+    assert.equal(gradeRequired("student", "teen"), true);
+    assert.equal(gradeRequired("student", null), true);
+    assert.equal(gradeRequired("student", "adult"), false);
+    assert.equal(gradeRequired("teacher", "adult"), false);
+    assert.equal(gradeRequired("admin", null), false);
   });
 
   test("13–17: phone optional; under 13: phone is never asked for and never written", () => {
@@ -100,6 +136,22 @@ describe("profile editing against the real database rules", () => {
       school_name: "Hill School",
     });
     assert.equal(Number((await one("select count(*) as n from student_profiles where profile_id = $1", [ID.S1])).n), 1, "no duplicate row");
+  });
+
+  test("an adult student's save with no grade or school is accepted by the database (both stored as null)", async () => {
+    const checked = validateProfile("student", "adult", { fullName: "Student One", phone: "0712345678", grade: "", schoolName: "", specialty: "", bio: "" });
+    assert.ok(checked.ok);
+    const s = checked.changes.student!;
+    await as(db, { id: ID.S1 }, () =>
+      db.query(
+        "insert into student_profiles (profile_id, grade, school_name) values ($1, $2, $3) on conflict (profile_id) do update set grade = excluded.grade, school_name = excluded.school_name",
+        [ID.S1, s.grade, s.school_name],
+      ),
+    );
+    assert.deepEqual(await one("select grade, school_name from student_profiles where profile_id = $1", [ID.S1]), {
+      grade: null,
+      school_name: null,
+    });
   });
 
   test("nobody can edit someone else's profile, or change their own role", async () => {

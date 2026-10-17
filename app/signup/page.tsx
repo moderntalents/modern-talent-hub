@@ -11,6 +11,7 @@ import { GoogleButton } from "@/components/auth/GoogleButton";
 import { DateOfBirthField, EMPTY_DOB, dobToAge, dobToIso, type DobParts } from "@/components/auth/DateOfBirthField";
 import { CHILD_AGE, ADULT_AGE, guardianEmailProblem } from "@/lib/age";
 import { friendlyAuthError } from "@/lib/auth-errors";
+import { hidesSchoolDetails, schoolDetailsPayload } from "@/lib/registration";
 
 type Role = "student" | "teacher";
 type Stage = "form" | "verify";
@@ -54,6 +55,24 @@ function SignupForm() {
   const age = dobToAge(dob); // null until a real date is chosen
   const isMinor = age !== null && age < ADULT_AGE; // needs a parent or guardian's approval
   const isChild = age !== null && age < CHILD_AGE; // no phone number, no Google sign-in
+  const hideSchoolDetails = hidesSchoolDetails(role, age); // students 18+ aren't asked for grade or school
+
+  // When a change hides Grade/Class and School, forget anything typed into them so it can't be sent later.
+  function clearSchoolDetailsIfHidden(nextRole: Role, nextDob: DobParts) {
+    if (!hidesSchoolDetails(nextRole, dobToAge(nextDob))) return;
+    setGrade("");
+    setSchoolName("");
+  }
+
+  function changeDob(next: DobParts) {
+    setDob(next);
+    clearSchoolDetailsIfHidden(role, next);
+  }
+
+  function changeRole(next: Role) {
+    setRole(next);
+    clearSchoolDetailsIfHidden(next, dob);
+  }
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -73,7 +92,7 @@ function SignupForm() {
     if (!isMinor && !phone.trim()) return "Enter your phone number.";
     if (password.length < 8) return "Password must be at least 8 characters.";
     if (password !== confirm) return "Passwords do not match.";
-    if (role === "student" && !grade.trim()) return "Enter your grade/class.";
+    if (role === "student" && !hideSchoolDetails && !grade.trim()) return "Enter your grade/class.";
     if (role === "teacher" && !specialty.trim()) return "Enter what you teach.";
     return null;
   }
@@ -157,8 +176,7 @@ function SignupForm() {
           dateOfBirth: dobToIso(dob),
           guardianEmail: isMinor ? guardianEmail.trim() : "",
           role,
-          grade,
-          schoolName,
+          ...schoolDetailsPayload(role, age, grade, schoolName),
           specialty,
           bio,
         }),
@@ -304,14 +322,14 @@ function SignupForm() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
-          <DateOfBirthField value={dob} onChange={setDob} disabled={loading} />
+          <DateOfBirthField value={dob} onChange={changeDob} disabled={loading} />
 
           <div className="grid grid-cols-2 gap-2">
             {(["student", "teacher"] as Role[]).map((r) => (
               <button
                 type="button"
                 key={r}
-                onClick={() => setRole(r)}
+                onClick={() => changeRole(r)}
                 className={`min-h-11 rounded-xl border text-sm font-semibold capitalize ${
                   role === r
                     ? "border-brand-cyan-deep bg-brand-cyan text-ink"
@@ -355,14 +373,16 @@ function SignupForm() {
           )}
 
           {role === "student" ? (
-            <>
-              <Field label="Grade / Class">
-                <Input value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="Grade 6" />
-              </Field>
-              <Field label="School (optional)">
-                <Input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="St. Luke's Primary" />
-              </Field>
-            </>
+            !hideSchoolDetails && (
+              <>
+                <Field label="Grade / Class">
+                  <Input value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="Grade 6" />
+                </Field>
+                <Field label="School (optional)">
+                  <Input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="St. Luke's Primary" />
+                </Field>
+              </>
+            )
           ) : (
             <>
               <Field label="What do you teach?">

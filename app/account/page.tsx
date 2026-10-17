@@ -8,7 +8,7 @@ import { getAccountStatus, MESSAGING_UNAVAILABLE_MESSAGE } from "@/lib/messaging
 import { CONTACT_EMAIL } from "@/lib/legal";
 import { ageGroup, ageInYears } from "@/lib/age";
 import { ageSummary } from "@/lib/age-summary";
-import { phoneEditable } from "@/lib/profile-edit";
+import { gradeRequired, phoneEditable } from "@/lib/profile-edit";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { DeleteAccountPanel } from "./DeleteAccountPanel";
@@ -92,6 +92,7 @@ export default async function AccountPage() {
         role={role}
         showPhone={phoneEditable(group)}
         phoneOptional={role === "admin" || group !== "adult"}
+        gradeOptional={!gradeRequired(role, group)}
         initial={{
           fullName: profile.full_name,
           phone: profile.phone ?? "",
