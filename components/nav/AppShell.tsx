@@ -58,7 +58,7 @@ export function AppShell({
                 key={item.href}
                 href={item.href}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${
-                  active ? "bg-ink text-white" : "text-ink-soft hover:bg-surface-2"
+                  active ? "bg-selected text-on-selected" : "text-ink-soft hover:bg-surface-2"
                 }`}
               >
                 <span>{item.icon}</span>
