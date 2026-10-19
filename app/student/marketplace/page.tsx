@@ -7,7 +7,7 @@ import { CoachBrowser } from "@/components/directory/CoachBrowser";
 export const dynamic = "force-dynamic";
 
 const pill = (active: boolean) =>
-  `shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold ${active ? "border-ink bg-ink text-white" : "border-line bg-surface"}`;
+  `shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold ${active ? "border-selected bg-selected text-on-selected" : "border-line bg-surface"}`;
 
 /**
  * Activities = a coach directory. By default every coach who has published an activity; pick an activity

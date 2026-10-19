@@ -12,7 +12,7 @@ import { GradePicker } from "./GradePicker";
 export const dynamic = "force-dynamic";
 
 const pill = (active: boolean) =>
-  `shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold ${active ? "border-ink bg-ink text-white" : "border-line bg-surface"}`;
+  `shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold ${active ? "border-selected bg-selected text-on-selected" : "border-line bg-surface"}`;
 
 /**
  * Subjects by school level (migration 0024): a student sees their own level first (from their grade) and
